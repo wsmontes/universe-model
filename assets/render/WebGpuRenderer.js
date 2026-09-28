@@ -1,13 +1,16 @@
 import { subtract } from "../core/Vec3d.js";
+import { transformMatrix3Vector } from "../astronomy/frames/Matrix3.js";
+import { EARTH_REFERENCE_ATMOSPHERE } from "./AtmosphereModel.js";
 import { bodyModel } from "./BodyModels.js";
 import { cameraRotation, multiplyMat4, reversedInfinitePerspective } from "./math.js";
 import { createUnitSphereMesh } from "./sphereMesh.js";
 
-const SHADER = `
+const HDR_FORMAT = "rgba16float";
+
+const BODY_SHADER = `
 struct SceneUniforms {
   viewProjection: mat4x4<f32>,
   sunPositionRadius: vec4<f32>,
-  exposurePadding: vec4<f32>,
 }
 
 struct BodyUniforms {
@@ -47,11 +50,6 @@ fn vertexMain(@location(0) unitPosition: vec3<f32>) -> VertexOutput {
   return output;
 }
 
-fn displayResponse(linearValue: vec3<f32>, exposure: f32) -> vec3<f32> {
-  let mapped = vec3<f32>(1.0) - exp(-max(linearValue, vec3<f32>(0.0)) * exposure);
-  return pow(mapped, vec3<f32>(1.0 / 2.2));
-}
-
 fn solarVisibility(worldPosition: vec3<f32>) -> f32 {
   let occluderRadius = body.occluderCenterRadius.w;
   if (occluderRadius <= 0.0) {
@@ -66,7 +64,6 @@ fn solarVisibility(worldPosition: vec3<f32>) -> f32 {
   if (sunDistance <= scene.sunPositionRadius.w || occluderDistance <= occluderRadius) {
     return 1.0;
   }
-
   if (occluderDistance >= sunDistance) {
     return 1.0;
   }
@@ -112,9 +109,8 @@ fn solarVisibility(worldPosition: vec3<f32>) -> f32 {
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let emissive = body.colorEmissive.w > 0.5;
-  let exposure = scene.exposurePadding.x;
   if (emissive) {
-    return vec4<f32>(displayResponse(vec3<f32>(20.0), exposure), 1.0);
+    return vec4<f32>(20.0, 20.0, 20.0, 1.0);
   }
 
   let toSun = scene.sunPositionRadius.xyz - input.worldPosition;
@@ -127,7 +123,268 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let visibleSolarDisk = solarVisibility(input.worldPosition);
   let reflected = body.colorEmissive.rgb * body.radiiReflectance.w *
     cosine * irradianceRelativeToEarth * visibleSolarDisk;
-  return vec4<f32>(displayResponse(reflected, exposure), 1.0);
+  return vec4<f32>(reflected, 1.0);
+}
+`;
+
+const ATMOSPHERE_SHADER = `
+struct AtmosphereUniforms {
+  viewProjection: mat4x4<f32>,
+  earthCenterUnused: vec4<f32>,
+  innerRadiiTop: vec4<f32>,
+  outerRadiiG: vec4<f32>,
+  sunPositionUnused: vec4<f32>,
+  rayleighBetaScaleHeight: vec4<f32>,
+  mieScatteringScaleHeight: vec4<f32>,
+  mieExtinctionPadding: vec4<f32>,
+  rotationColumn0: vec4<f32>,
+  rotationColumn1: vec4<f32>,
+  rotationColumn2: vec4<f32>,
+}
+
+@group(0) @binding(0) var<uniform> atmosphere: AtmosphereUniforms;
+
+struct VertexOutput {
+  @builtin(position) clipPosition: vec4<f32>,
+  @location(0) worldPosition: vec3<f32>,
+}
+
+fn bodyToJ2000() -> mat3x3<f32> {
+  return mat3x3<f32>(
+    atmosphere.rotationColumn0.xyz,
+    atmosphere.rotationColumn1.xyz,
+    atmosphere.rotationColumn2.xyz
+  );
+}
+
+@vertex
+fn vertexMain(@location(0) unitPosition: vec3<f32>) -> VertexOutput {
+  let worldPosition =
+    atmosphere.earthCenterUnused.xyz +
+    bodyToJ2000() * (unitPosition * atmosphere.outerRadiiG.xyz);
+
+  var output: VertexOutput;
+  output.clipPosition = atmosphere.viewProjection * vec4<f32>(worldPosition, 1.0);
+  output.worldPosition = worldPosition;
+  return output;
+}
+
+fn rayEllipsoid(
+  origin: vec3<f32>,
+  direction: vec3<f32>,
+  radii: vec3<f32>
+) -> vec2<f32> {
+  let o = origin / radii;
+  let d = direction / radii;
+  let a = dot(d, d);
+  let b = dot(o, d);
+  let c = dot(o, o) - 1.0;
+  let discriminant = b * b - a * c;
+  if (discriminant < 0.0) {
+    return vec2<f32>(-1.0, -1.0);
+  }
+  let root = sqrt(discriminant);
+  return vec2<f32>((-b - root) / a, (-b + root) / a);
+}
+
+fn radialSurfaceRadius(direction: vec3<f32>, radii: vec3<f32>) -> f32 {
+  let n = normalize(direction);
+  let scaled = n / radii;
+  return inverseSqrt(dot(scaled, scaled));
+}
+
+fn densityAt(bodyFixedPosition: vec3<f32>) -> vec2<f32> {
+  let radius = length(bodyFixedPosition);
+  if (radius <= 0.0) {
+    return vec2<f32>(1.0, 1.0);
+  }
+  let surfaceRadius = radialSurfaceRadius(
+    bodyFixedPosition,
+    atmosphere.innerRadiiTop.xyz
+  );
+  let altitude = max(radius - surfaceRadius, 0.0);
+  return vec2<f32>(
+    exp(-altitude / atmosphere.rayleighBetaScaleHeight.w),
+    exp(-altitude / atmosphere.mieScatteringScaleHeight.w)
+  );
+}
+
+fn opticalDepthToSun(
+  sampleBody: vec3<f32>,
+  sunDirectionBody: vec3<f32>
+) -> vec2<f32> {
+  let groundHit = rayEllipsoid(
+    sampleBody,
+    sunDirectionBody,
+    atmosphere.innerRadiiTop.xyz
+  );
+  if (groundHit.y > 0.0 && groundHit.x > 1.0) {
+    return vec2<f32>(1e30, 1e30);
+  }
+
+  let atmosphereHit = rayEllipsoid(
+    sampleBody,
+    sunDirectionBody,
+    atmosphere.outerRadiiG.xyz
+  );
+  let endDistance = atmosphereHit.y;
+  if (endDistance <= 0.0) {
+    return vec2<f32>(0.0, 0.0);
+  }
+
+  let stepLength = endDistance / 8.0;
+  var opticalDepth = vec2<f32>(0.0);
+  for (var i = 0; i < 8; i = i + 1) {
+    let t = (f32(i) + 0.5) * stepLength;
+    opticalDepth += densityAt(sampleBody + sunDirectionBody * t) * stepLength;
+  }
+  return opticalDepth;
+}
+
+fn rayleighPhase(mu: f32) -> f32 {
+  return (3.0 / (16.0 * 3.141592653589793)) * (1.0 + mu * mu);
+}
+
+fn miePhase(mu: f32, g: f32) -> f32 {
+  let gg = g * g;
+  let denominator = pow(max(1.0 + gg - 2.0 * g * mu, 1e-4), 1.5);
+  return (1.0 - gg) / (4.0 * 3.141592653589793 * denominator);
+}
+
+struct AtmosphereOutput {
+  @location(0) scattering: vec4<f32>,
+  @location(1) transmittance: vec4<f32>,
+}
+
+@fragment
+fn fragmentMain(input: VertexOutput) -> AtmosphereOutput {
+  let bodyToWorld = bodyToJ2000();
+  let worldToBody = transpose(bodyToWorld);
+
+  let cameraBody = worldToBody * (-atmosphere.earthCenterUnused.xyz);
+  let rayDirectionWorld = normalize(input.worldPosition);
+  let rayDirectionBody = normalize(worldToBody * rayDirectionWorld);
+
+  let atmosphereHit = rayEllipsoid(
+    cameraBody,
+    rayDirectionBody,
+    atmosphere.outerRadiiG.xyz
+  );
+  if (atmosphereHit.y <= 0.0) {
+    discard;
+  }
+
+  let startDistance = max(atmosphereHit.x, 0.0);
+  var endDistance = atmosphereHit.y;
+
+  let groundHit = rayEllipsoid(
+    cameraBody,
+    rayDirectionBody,
+    atmosphere.innerRadiiTop.xyz
+  );
+  if (groundHit.x > startDistance && groundHit.x < endDistance) {
+    endDistance = groundHit.x;
+  }
+
+  if (endDistance <= startDistance) {
+    discard;
+  }
+
+  let sunBody = worldToBody *
+    (atmosphere.sunPositionUnused.xyz - atmosphere.earthCenterUnused.xyz);
+
+  let betaRayleigh = atmosphere.rayleighBetaScaleHeight.xyz;
+  let betaMieScattering = atmosphere.mieScatteringScaleHeight.xyz;
+  let betaMieExtinction = atmosphere.mieExtinctionPadding.xyz;
+  let g = atmosphere.outerRadiiG.w;
+  let astronomicalUnitMeters = 149597870700.0;
+  let sunDistanceMeters = max(length(sunBody), 1.0);
+  let solarIrradianceRelative =
+    (astronomicalUnitMeters / sunDistanceMeters) *
+    (astronomicalUnitMeters / sunDistanceMeters);
+
+  let stepLength = (endDistance - startDistance) / 16.0;
+  var viewOpticalDepth = vec2<f32>(0.0);
+  var scattering = vec3<f32>(0.0);
+
+  for (var i = 0; i < 16; i = i + 1) {
+    let t = startDistance + (f32(i) + 0.5) * stepLength;
+    let sampleBody = cameraBody + rayDirectionBody * t;
+    let density = densityAt(sampleBody);
+    viewOpticalDepth += density * stepLength;
+
+    let sunDirectionBody = normalize(sunBody - sampleBody);
+    let sunOpticalDepth = opticalDepthToSun(sampleBody, sunDirectionBody);
+    if (sunOpticalDepth.x > 1e20) {
+      continue;
+    }
+
+    let totalRayleighDepth = viewOpticalDepth.x + sunOpticalDepth.x;
+    let totalMieDepth = viewOpticalDepth.y + sunOpticalDepth.y;
+    let transmittance = exp(
+      -(betaRayleigh * totalRayleighDepth +
+        betaMieExtinction * totalMieDepth)
+    );
+
+    let mu = dot(rayDirectionBody, sunDirectionBody);
+    let source =
+      betaRayleigh * density.x * rayleighPhase(mu) +
+      betaMieScattering * density.y * miePhase(mu, g);
+    scattering += transmittance * source * stepLength * solarIrradianceRelative;
+  }
+
+  let viewTransmittance = exp(
+    -(betaRayleigh * viewOpticalDepth.x +
+      betaMieExtinction * viewOpticalDepth.y)
+  );
+
+  var output: AtmosphereOutput;
+  output.scattering = vec4<f32>(scattering, 1.0);
+  output.transmittance = vec4<f32>(viewTransmittance, 1.0);
+  return output;
+}
+`;
+
+const DISPLAY_SHADER = `
+struct DisplayUniforms {
+  exposure: f32,
+  padding0: f32,
+  padding1: f32,
+  padding2: f32,
+}
+
+@group(0) @binding(0) var bodyTexture: texture_2d<f32>;
+@group(0) @binding(1) var atmosphereScatteringTexture: texture_2d<f32>;
+@group(0) @binding(2) var atmosphereTransmittanceTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> display: DisplayUniforms;
+
+@vertex
+fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4<f32> {
+  var positions = array<vec2<f32>, 3>(
+    vec2<f32>(-1.0, -1.0),
+    vec2<f32>(3.0, -1.0),
+    vec2<f32>(-1.0, 3.0)
+  );
+  return vec4<f32>(positions[vertexIndex], 0.0, 1.0);
+}
+
+@fragment
+fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+  let pixel = vec2<i32>(position.xy);
+  let bodyLinear = max(textureLoad(bodyTexture, pixel, 0).rgb, vec3<f32>(0.0));
+  let scattering = max(
+    textureLoad(atmosphereScatteringTexture, pixel, 0).rgb,
+    vec3<f32>(0.0)
+  );
+  let transmittance = clamp(
+    textureLoad(atmosphereTransmittanceTexture, pixel, 0).rgb,
+    vec3<f32>(0.0),
+    vec3<f32>(1.0)
+  );
+  let linear = scattering + transmittance * bodyLinear;
+  let mapped = vec3<f32>(1.0) - exp(-linear * display.exposure);
+  let srgbApprox = pow(mapped, vec3<f32>(1.0 / 2.2));
+  return vec4<f32>(srgbApprox, 1.0);
 }
 `;
 
@@ -136,14 +393,28 @@ export class WebGpuRenderer {
   device = null;
   context = null;
   format = null;
-  pipeline = null;
-  sceneBuffer = null;
-  sceneBindGroup = null;
+
+  bodyPipeline = null;
+  bodySceneBuffer = null;
+  bodySceneBindGroup = null;
+  bodyResources = new Map();
+
+  atmospherePipeline = null;
+  atmosphereBuffer = null;
+  atmosphereBindGroup = null;
+
+  displayPipeline = null;
+  displayBuffer = null;
+  displayBindGroup = null;
+
   vertexBuffer = null;
   indexBuffer = null;
   indexCount = 0;
+
   depthTexture = null;
-  bodyResources = new Map();
+  hdrTexture = null;
+  atmosphereScatteringTexture = null;
+  atmosphereTransmittanceTexture = null;
 
   constructor(canvas) {
     this.canvas = canvas;
@@ -159,40 +430,9 @@ export class WebGpuRenderer {
     if (!this.context) throw new Error("Unable to create a WebGPU canvas context.");
     this.format = navigator.gpu.getPreferredCanvasFormat();
 
-    const module = this.device.createShaderModule({ label: "physical-body-shader", code: SHADER });
-    this.pipeline = this.device.createRenderPipeline({
-      label: "physical-body-pipeline",
-      layout: "auto",
-      vertex: {
-        module,
-        entryPoint: "vertexMain",
-        buffers: [{
-          arrayStride: 12,
-          attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }],
-        }],
-      },
-      fragment: {
-        module,
-        entryPoint: "fragmentMain",
-        targets: [{ format: this.format }],
-      },
-      primitive: { topology: "triangle-list", cullMode: "back", frontFace: "ccw" },
-      depthStencil: {
-        format: "depth24plus",
-        depthWriteEnabled: true,
-        depthCompare: "greater",
-      },
-    });
-
-    this.sceneBuffer = this.device.createBuffer({
-      label: "scene-uniforms",
-      size: 96,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-    this.sceneBindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [{ binding: 0, resource: { buffer: this.sceneBuffer } }],
-    });
+    this.initializeBodyPipeline();
+    this.initializeAtmospherePipeline();
+    this.initializeDisplayPipeline();
 
     const mesh = createUnitSphereMesh();
     this.indexCount = mesh.indices.length;
@@ -218,13 +458,32 @@ export class WebGpuRenderer {
     this.resize();
 
     const context = this.context;
-    const pipeline = this.pipeline;
-    const sceneBuffer = this.sceneBuffer;
-    const sceneBindGroup = this.sceneBindGroup;
+    const bodyPipeline = this.bodyPipeline;
+    const bodySceneBuffer = this.bodySceneBuffer;
+    const bodySceneBindGroup = this.bodySceneBindGroup;
     const vertexBuffer = this.vertexBuffer;
     const indexBuffer = this.indexBuffer;
     const depthTexture = this.depthTexture;
-    if (!context || !pipeline || !sceneBuffer || !sceneBindGroup || !vertexBuffer || !indexBuffer || !depthTexture) {
+    const hdrTexture = this.hdrTexture;
+    const atmosphereScatteringTexture = this.atmosphereScatteringTexture;
+    const atmosphereTransmittanceTexture = this.atmosphereTransmittanceTexture;
+    const displayPipeline = this.displayPipeline;
+    const displayBindGroup = this.displayBindGroup;
+
+    if (
+      !context ||
+      !bodyPipeline ||
+      !bodySceneBuffer ||
+      !bodySceneBindGroup ||
+      !vertexBuffer ||
+      !indexBuffer ||
+      !depthTexture ||
+      !hdrTexture ||
+      !atmosphereScatteringTexture ||
+      !atmosphereTransmittanceTexture ||
+      !displayPipeline ||
+      !displayBindGroup
+    ) {
       throw new Error("Renderer must be initialized before rendering.");
     }
 
@@ -242,11 +501,10 @@ export class WebGpuRenderer {
 
     const sunLocal = subtract(sun.positionMeters, camera.positionMeters);
     const sunRadius = bodyModel(10).radiusMeters;
-    const sceneData = new Float32Array(24);
-    sceneData.set(viewProjection, 0);
-    sceneData.set([sunLocal.x, sunLocal.y, sunLocal.z, sunRadius], 16);
-    sceneData.set([exposure, 0, 0, 0], 20);
-    device.queue.writeBuffer(sceneBuffer, 0, sceneData);
+    const bodySceneData = new Float32Array(20);
+    bodySceneData.set(viewProjection, 0);
+    bodySceneData.set([sunLocal.x, sunLocal.y, sunLocal.z, sunRadius], 16);
+    device.queue.writeBuffer(bodySceneBuffer, 0, bodySceneData);
 
     const renderableStates = states.filter((state) => {
       const model = bodyModel(state.bodyId);
@@ -296,35 +554,92 @@ export class WebGpuRenderer {
       bodyData.set([m[0], m[3], m[6], 0], 16);
       bodyData.set([m[1], m[4], m[7], 0], 20);
       bodyData.set([m[2], m[5], m[8], 0], 24);
-
       device.queue.writeBuffer(resource.uniformBuffer, 0, bodyData);
     }
 
+    const hdrView = hdrTexture.createView();
+    const atmosphereScatteringView = atmosphereScatteringTexture.createView();
+    const atmosphereTransmittanceView = atmosphereTransmittanceTexture.createView();
+    const depthView = depthTexture.createView();
     const encoder = device.createCommandEncoder({ label: "universe-frame" });
-    const pass = encoder.beginRenderPass({
+
+    const bodyPass = encoder.beginRenderPass({
+      colorAttachments: [{
+        view: hdrView,
+        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        loadOp: "clear",
+        storeOp: "store",
+      }],
+      depthStencilAttachment: {
+        view: depthView,
+        depthClearValue: 0,
+        depthLoadOp: "clear",
+        depthStoreOp: "store",
+      },
+    });
+    bodyPass.setPipeline(bodyPipeline);
+    bodyPass.setBindGroup(0, bodySceneBindGroup);
+    bodyPass.setVertexBuffer(0, vertexBuffer);
+    bodyPass.setIndexBuffer(indexBuffer, "uint32");
+    for (const state of renderableStates) {
+      bodyPass.setBindGroup(1, this.bodyResource(state.bodyId).bindGroup);
+      bodyPass.drawIndexed(this.indexCount);
+    }
+    bodyPass.end();
+
+    const atmospherePass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: atmosphereScatteringView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+        {
+          view: atmosphereTransmittanceView,
+          clearValue: { r: 1, g: 1, b: 1, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+      depthStencilAttachment: {
+        view: depthView,
+        depthLoadOp: "load",
+        depthStoreOp: "store",
+      },
+    });
+
+    if (earth?.orientation && this.cameraIsOutsideEarthAtmosphere(earth, camera)) {
+      this.writeAtmosphereUniforms(earth, sun, camera, viewProjection);
+      const atmospherePipeline = this.atmospherePipeline;
+      const atmosphereBindGroup = this.atmosphereBindGroup;
+      if (atmospherePipeline && atmosphereBindGroup) {
+        atmospherePass.setPipeline(atmospherePipeline);
+        atmospherePass.setBindGroup(0, atmosphereBindGroup);
+        atmospherePass.setVertexBuffer(0, vertexBuffer);
+        atmospherePass.setIndexBuffer(indexBuffer, "uint32");
+        atmospherePass.drawIndexed(this.indexCount);
+      }
+    }
+    atmospherePass.end();
+
+    if (this.displayBuffer) {
+      device.queue.writeBuffer(this.displayBuffer, 0, new Float32Array([exposure, 0, 0, 0]));
+    }
+
+    const displayPass = encoder.beginRenderPass({
       colorAttachments: [{
         view: context.getCurrentTexture().createView(),
         clearValue: { r: 0, g: 0, b: 0, a: 1 },
         loadOp: "clear",
         storeOp: "store",
       }],
-      depthStencilAttachment: {
-        view: depthTexture.createView(),
-        depthClearValue: 0,
-        depthLoadOp: "clear",
-        depthStoreOp: "store",
-      },
     });
-    pass.setPipeline(pipeline);
-    pass.setBindGroup(0, sceneBindGroup);
-    pass.setVertexBuffer(0, vertexBuffer);
-    pass.setIndexBuffer(indexBuffer, "uint32");
+    displayPass.setPipeline(displayPipeline);
+    displayPass.setBindGroup(0, displayBindGroup);
+    displayPass.draw(3);
+    displayPass.end();
 
-    for (const state of renderableStates) {
-      pass.setBindGroup(1, this.bodyResource(state.bodyId).bindGroup);
-      pass.drawIndexed(this.indexCount);
-    }
-    pass.end();
     device.queue.submit([encoder.finish()]);
   }
 
@@ -348,19 +663,191 @@ export class WebGpuRenderer {
   dispose() {
     window.removeEventListener("resize", this.resize);
     this.depthTexture?.destroy();
+    this.hdrTexture?.destroy();
+    this.atmosphereScatteringTexture?.destroy();
+    this.atmosphereTransmittanceTexture?.destroy();
     for (const resource of this.bodyResources.values()) resource.uniformBuffer.destroy();
-    this.sceneBuffer?.destroy();
+    this.bodySceneBuffer?.destroy();
+    this.atmosphereBuffer?.destroy();
+    this.displayBuffer?.destroy();
     this.vertexBuffer?.destroy();
     this.indexBuffer?.destroy();
     this.device?.destroy();
+  }
+
+  initializeBodyPipeline() {
+    const device = this.requireDevice();
+    const module = device.createShaderModule({ label: "physical-body-shader", code: BODY_SHADER });
+    this.bodyPipeline = device.createRenderPipeline({
+      label: "physical-body-pipeline",
+      layout: "auto",
+      vertex: {
+        module,
+        entryPoint: "vertexMain",
+        buffers: [{
+          arrayStride: 12,
+          attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }],
+        }],
+      },
+      fragment: {
+        module,
+        entryPoint: "fragmentMain",
+        targets: [{ format: HDR_FORMAT }],
+      },
+      primitive: { topology: "triangle-list", cullMode: "back", frontFace: "ccw" },
+      depthStencil: {
+        format: "depth24plus",
+        depthWriteEnabled: true,
+        depthCompare: "greater",
+      },
+    });
+
+    this.bodySceneBuffer = device.createBuffer({
+      label: "body-scene-uniforms",
+      size: 80,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.bodySceneBindGroup = device.createBindGroup({
+      layout: this.bodyPipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.bodySceneBuffer } }],
+    });
+  }
+
+  initializeAtmospherePipeline() {
+    const device = this.requireDevice();
+    const module = device.createShaderModule({
+      label: "earth-atmosphere-single-scattering-shader",
+      code: ATMOSPHERE_SHADER,
+    });
+
+    this.atmospherePipeline = device.createRenderPipeline({
+      label: "earth-atmosphere-single-scattering-pipeline",
+      layout: "auto",
+      vertex: {
+        module,
+        entryPoint: "vertexMain",
+        buffers: [{
+          arrayStride: 12,
+          attributes: [{ shaderLocation: 0, offset: 0, format: "float32x3" }],
+        }],
+      },
+      fragment: {
+        module,
+        entryPoint: "fragmentMain",
+        targets: [
+          { format: HDR_FORMAT },
+          { format: HDR_FORMAT },
+        ],
+      },
+      primitive: { topology: "triangle-list", cullMode: "back", frontFace: "ccw" },
+      depthStencil: {
+        format: "depth24plus",
+        depthWriteEnabled: false,
+        depthCompare: "greater",
+      },
+    });
+
+    this.atmosphereBuffer = device.createBuffer({
+      label: "earth-atmosphere-uniforms",
+      size: 224,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.atmosphereBindGroup = device.createBindGroup({
+      layout: this.atmospherePipeline.getBindGroupLayout(0),
+      entries: [{ binding: 0, resource: { buffer: this.atmosphereBuffer } }],
+    });
+  }
+
+  initializeDisplayPipeline() {
+    const device = this.requireDevice();
+    if (!this.format) throw new Error("Canvas format is unavailable.");
+    const module = device.createShaderModule({ label: "display-response-shader", code: DISPLAY_SHADER });
+    this.displayPipeline = device.createRenderPipeline({
+      label: "display-response-pipeline",
+      layout: "auto",
+      vertex: { module, entryPoint: "vertexMain" },
+      fragment: {
+        module,
+        entryPoint: "fragmentMain",
+        targets: [{ format: this.format }],
+      },
+      primitive: { topology: "triangle-list" },
+    });
+    this.displayBuffer = device.createBuffer({
+      label: "display-response-uniforms",
+      size: 16,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+  }
+
+  writeAtmosphereUniforms(earth, sun, camera, viewProjection) {
+    const device = this.requireDevice();
+    const buffer = this.atmosphereBuffer;
+    if (!buffer || !earth.orientation) return;
+
+    const model = EARTH_REFERENCE_ATMOSPHERE;
+    const earthLocal = subtract(earth.positionMeters, camera.positionMeters);
+    const sunLocal = subtract(sun.positionMeters, camera.positionMeters);
+    const m = earth.orientation.bodyFixedToJ2000;
+    const inner = bodyModel(399).radiiMeters;
+
+    const data = new Float32Array(56);
+    data.set(viewProjection, 0);
+    data.set([earthLocal.x, earthLocal.y, earthLocal.z, 0], 16);
+    data.set([inner[0], inner[1], inner[2], model.topAltitudeMeters], 20);
+    data.set([
+      model.outerRadiiMeters[0],
+      model.outerRadiiMeters[1],
+      model.outerRadiiMeters[2],
+      model.mieG,
+    ], 24);
+    data.set([sunLocal.x, sunLocal.y, sunLocal.z, 0], 28);
+    data.set([
+      model.rayleighScatteringPerMeterRgb[0],
+      model.rayleighScatteringPerMeterRgb[1],
+      model.rayleighScatteringPerMeterRgb[2],
+      model.rayleighScaleHeightMeters,
+    ], 32);
+    data.set([
+      model.mieScatteringPerMeterRgb[0],
+      model.mieScatteringPerMeterRgb[1],
+      model.mieScatteringPerMeterRgb[2],
+      model.mieScaleHeightMeters,
+    ], 36);
+    data.set([
+      model.mieExtinctionPerMeterRgb[0],
+      model.mieExtinctionPerMeterRgb[1],
+      model.mieExtinctionPerMeterRgb[2],
+      0,
+    ], 40);
+    data.set([m[0], m[3], m[6], 0], 44);
+    data.set([m[1], m[4], m[7], 0], 48);
+    data.set([m[2], m[5], m[8], 0], 52);
+
+    device.queue.writeBuffer(buffer, 0, data);
+  }
+
+  cameraIsOutsideEarthAtmosphere(earth, camera) {
+    if (!earth.orientation) return false;
+    const relativeJ2000 = subtract(camera.positionMeters, earth.positionMeters);
+    const relativeBody = transformMatrix3Vector(
+      earth.orientation.j2000ToBodyFixed,
+      relativeJ2000,
+    );
+    const [a, b, c] = EARTH_REFERENCE_ATMOSPHERE.outerRadiiMeters;
+    const normalizedRadiusSquared =
+      (relativeBody.x * relativeBody.x) / (a * a) +
+      (relativeBody.y * relativeBody.y) / (b * b) +
+      (relativeBody.z * relativeBody.z) / (c * c);
+    return normalizedRadiusSquared > 1;
   }
 
   bodyResource(bodyId) {
     const existing = this.bodyResources.get(bodyId);
     if (existing) return existing;
     const device = this.requireDevice();
-    const pipeline = this.pipeline;
-    if (!pipeline) throw new Error("GPU pipeline is not initialized.");
+    const pipeline = this.bodyPipeline;
+    if (!pipeline) throw new Error("GPU body pipeline is not initialized.");
     const uniformBuffer = device.createBuffer({
       label: "body-" + bodyId + "-uniforms",
       size: 112,
@@ -385,17 +872,60 @@ export class WebGpuRenderer {
     const dpr = Math.max(1, window.devicePixelRatio || 1);
     const width = Math.max(1, Math.floor(this.canvas.clientWidth * dpr));
     const height = Math.max(1, Math.floor(this.canvas.clientHeight * dpr));
-    if (this.canvas.width === width && this.canvas.height === height && this.depthTexture) return;
+    if (
+      this.canvas.width === width &&
+      this.canvas.height === height &&
+      this.depthTexture &&
+      this.hdrTexture &&
+      this.atmosphereScatteringTexture &&
+      this.atmosphereTransmittanceTexture
+    ) return;
 
     this.canvas.width = width;
     this.canvas.height = height;
     this.context.configure({ device: this.device, format: this.format, alphaMode: "opaque" });
+
     this.depthTexture?.destroy();
+    this.hdrTexture?.destroy();
+    this.atmosphereScatteringTexture?.destroy();
+    this.atmosphereTransmittanceTexture?.destroy();
+
     this.depthTexture = this.device.createTexture({
       label: "reversed-z-depth",
       size: [width, height],
       format: "depth24plus",
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+    this.hdrTexture = this.device.createTexture({
+      label: "linear-hdr-body-scene",
+      size: [width, height],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.atmosphereScatteringTexture = this.device.createTexture({
+      label: "atmosphere-single-scattering",
+      size: [width, height],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.atmosphereTransmittanceTexture = this.device.createTexture({
+      label: "atmosphere-rgb-transmittance",
+      size: [width, height],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+
+    if (!this.displayPipeline || !this.displayBuffer) {
+      throw new Error("Display pipeline is not initialized.");
+    }
+    this.displayBindGroup = this.device.createBindGroup({
+      layout: this.displayPipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.hdrTexture.createView() },
+        { binding: 1, resource: this.atmosphereScatteringTexture.createView() },
+        { binding: 2, resource: this.atmosphereTransmittanceTexture.createView() },
+        { binding: 3, resource: { buffer: this.displayBuffer } },
+      ],
     });
   };
 }
