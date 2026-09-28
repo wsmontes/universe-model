@@ -4,18 +4,66 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <meta name="description" content="A physically grounded astronomical digital twin rendered in the browser." />
     <title>Universe Model</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main id="app">
       <canvas id="universe" aria-label="Universe Model rendering surface"></canvas>
-      <section id="status" aria-live="polite">
-        <strong>Universe Model</strong>
-        <span id="gpu-status">Initializing WebGPU…</span>
-        <span id="astronomy-status">Astronomical state: not loaded</span>
-        <span id="epoch"></span>
+
+      <section id="controls" aria-label="Universe controls">
+        <div class="brand-row">
+          <div>
+            <strong>Universe Model</strong>
+            <span class="subtle">physical scale · JPL ephemerides · browser-native</span>
+          </div>
+          <span id="runtime-badge" class="badge">booting</span>
+        </div>
+
+        <label class="field">
+          <span>Epoch UTC</span>
+          <input id="epoch-input" type="text" inputmode="text" spellcheck="false" />
+        </label>
+
+        <div class="button-row" aria-label="Frame body">
+          <button type="button" data-frame="10">Sun</button>
+          <button type="button" data-frame="399" class="selected">Earth</button>
+          <button type="button" data-frame="301">Moon</button>
+          <button type="button" data-frame="system">Earth–Moon</button>
+        </div>
+
+        <div class="button-row">
+          <button id="apply-epoch" type="button">Apply epoch</button>
+          <button id="now" type="button">Now</button>
+        </div>
+
+        <details>
+          <summary>Kernel / provenance</summary>
+          <dl class="status-grid">
+            <dt>WebGPU</dt><dd id="gpu-status">initializing</dd>
+            <dt>Ephemeris</dt><dd id="astronomy-status">not loaded</dd>
+            <dt>Time</dt><dd id="time-status">not converted</dd>
+            <dt>Frame</dt><dd id="frame-status">J2000 / SSB</dd>
+            <dt>Source</dt><dd id="source-status">—</dd>
+            <dt>Integrity</dt><dd id="integrity-status">—</dd>
+          </dl>
+          <label class="file-field">
+            <span>If network loading fails, use an official DE442s/DE440s BSP file:</span>
+            <input id="kernel-file" type="file" accept=".bsp,application/octet-stream" />
+          </label>
+        </details>
+
+        <p id="message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="readout" aria-label="Selected object state">
+        <div><span>Target</span><strong id="target-name">Earth</strong></div>
+        <div><span>Distance from SSB</span><strong id="target-distance">—</strong></div>
+        <div><span>Camera distance</span><strong id="camera-distance">—</strong></div>
+        <div><span>Surface model</span><strong id="surface-model">ellipsoid / uniform reflectance</strong></div>
       </section>
     </main>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="./assets/main.js"></script>
   </body>
 </html>

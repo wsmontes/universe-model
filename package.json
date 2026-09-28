@@ -1,17 +1,18 @@
 {
   "name": "universe-model",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && tsc && node scripts/build-static.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/test.mjs",
+    "preview": "node scripts/serve-static.mjs",
+    "deploy:pages": "node scripts/deploy-pages.mjs"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.64",
-    "typescript": "^5.9.2",
-    "vite": "^7.1.7"
+    "typescript": "^5.9.2"
   }
 }

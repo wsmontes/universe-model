@@ -2,91 +2,96 @@
 
 ## Core rule
 
-The application is a renderer of a physical astronomical state, not an orbital animation engine.
+Universe Model is a renderer of physical astronomical state, not an orbital animation engine.
 
 ```text
-authoritative astronomical data
-        |
-        v
-astronomy provider
-(time, ephemerides, orientation, frames)
-        |
-        v
-double-precision world state in SI units
-        |
-        v
-camera-relative transform
-        |
-        v
+authoritative data
+  |-- NAIF LSK (civil -> dynamical time)
+  `-- JPL SPK (ephemerides)
+          |
+          v
+astronomy worker
+          |
+          v
+barycentric J2000 state, float64, SI
+          |
+          v
+camera-relative large-world transform
+          |
+          v
 WebGPU renderer
-        |
-        v
-display / optical response
+          |
+          v
+explicit optical/display response
 ```
+
+## Static/browser-only runtime
+
+The production artifact is ordinary static content. There is no application server, database, API, serverless function, or runtime Node dependency. The browser downloads and verifies scientific kernels and performs the ephemeris calculation locally.
+
+Source stays on `main`; `gh-pages` is a generated publication branch. Deployment is performed explicitly with `npm run deploy:pages`; no GitHub Actions workflow is required.
+
+## Time
+
+The UI accepts UTC. `TimeConverter` parses a pinned NAIF leap-seconds kernel and converts UTC -> TAI -> TT -> ET/TDB using the DELTET constants carried by the kernel. Astronomical state is a function of the absolute epoch; positions are never advanced by integrating frame deltas.
+
+The current parser intentionally refuses the literal leap-second label `23:59:60`. Normal instants on either side of a leap second use the correct TAI-UTC step. Full SPICE-compatible leap-second-label parsing is a later time-system refinement.
+
+## Ephemerides
+
+`SpkKernel` implements the DAF/SPK subset required by DE44xs planetary kernels:
+
+- DAF file record and summary records;
+- LTL-IEEE and BIG-IEEE decoding;
+- SPK Type 2 position segments;
+- analytic Chebyshev derivative for velocity;
+- segment precedence;
+- center-chain composition to the Solar System Barycenter;
+- J2000 frame only at this milestone.
+
+DE442s is preferred. DE440s is retained as an operational fallback. Unsupported segment types or frames fail explicitly.
+
+## Worker boundary
+
+The parsed SPK lives in a module Web Worker. Kernel parsing and state reconstruction therefore remain outside the render loop. The main thread receives only state vectors and provenance.
 
 ## Coordinate model
 
-The world model stores absolute positions as IEEE-754 double-precision numbers in SI meters.
+Absolute state uses JavaScript IEEE-754 doubles and SI units:
 
-The first solar-system implementation will use a barycentric inertial frame compatible with the selected JPL/SPICE kernels. Reference-frame identity is carried with every astronomical state and is never inferred from renderer state.
+```text
+position: m
+velocity: m/s
+```
 
-The GPU does not receive raw astronomical coordinates. For each rendered object:
+The GPU never receives raw astronomical positions. Before upload:
 
 ```text
 local = absolute_object_position - absolute_camera_position
 ```
 
-The subtraction occurs in double precision. Only the local result is narrowed for GPU consumption.
+That subtraction is performed in double precision, after which the local value is narrowed to GPU float32.
 
-This preserves local precision without altering physical scale.
+## Large-world rendering
 
-## Time model
-
-Animation time is not integrated frame by frame.
-
-Astronomical state is a function of an absolute epoch:
-
-```text
-state = provider(body, epoch)
-```
-
-UI time begins as UTC. The astronomy provider owns conversion to the dynamical time scale required by its authoritative dataset (for SPICE this will normally involve ET/TDB semantics).
-
-Seeking backward or forward therefore reconstructs state from the requested epoch rather than accumulating integration error.
-
-## Astronomy-provider boundary
-
-`AstronomyProvider` is deliberately independent from rendering.
-
-The first real provider should be SPICE-backed and expose:
-
-- barycentric body state vectors;
-- frame metadata;
-- orientation transforms;
-- geometric and observer-corrected queries as separate operations;
-- provenance for every returned state.
-
-Until that provider exists, the application renders no celestial bodies.
-
-## Renderer responsibilities
-
-The WebGPU renderer is responsible for:
+The current renderer uses:
 
 - camera-relative coordinates;
-- depth strategy suitable for enormous scale ranges;
-- surface LOD;
-- physically based light transport approximations;
-- atmosphere;
-- optical/display transform.
+- a reversed-Z infinite projection;
+- a floating camera origin;
+- physical body radii;
+- no distance compression.
 
-It is not responsible for orbital mechanics or inventing missing astronomical data.
+A future high/low coordinate split is reserved for cases where camera-relative float32 is insufficient near detailed surfaces.
 
-## Planned precision work
+## Lighting
 
-The initial scaffold validates the browser and WebGPU path. Subsequent renderer work will introduce:
+There is no ambient light. The Sun is the sole source in the first scene. Non-emissive bodies use inverse-square solar illumination and a Lambertian surface model with explicitly declared reflectance. The display transform is explicit and does not alter geometry.
 
-1. reversed-Z depth;
-2. camera-relative world transforms;
-3. high/low coordinate encoding where float32 locality is insufficient;
-4. hierarchical reference frames for near-surface work;
-5. deterministic precision tests across astronomical and local scales.
+## Body shape/orientation boundary
+
+The first Earth and Moon visual models are deliberately orientation-independent spheres using declared physical mean radii. No geographic texture is shown because body-fixed orientation has not yet been implemented. Texture, DEM, clouds, and longitude-dependent data are gated on authoritative frame transforms.
+
+## Next architectural boundary
+
+Body-fixed orientation will be a separate frame service driven by authoritative PCK/FK/Earth-orientation data. Rendering code will not infer or approximate body orientation.

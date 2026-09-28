@@ -4,43 +4,66 @@
 
 - [x] TypeScript application shell
 - [x] WebGPU initialization
-- [x] SI/double-precision world-state conventions
+- [x] SI / double-precision world-state conventions
 - [x] camera-relative transform boundary
-- [x] astronomy-provider contract
+- [x] reversed-Z large-world depth
 - [x] physical-integrity policy
-- [ ] automated precision tests
+- [x] local automated core tests
+- [x] static build and branch-based Pages deployment script
 
 ## M1 — Authoritative Sun / Earth / Moon state
 
-- [ ] choose and pin JPL/SPICE kernel set
-- [ ] SPICE execution strategy in browser (WASM + worker)
-- [ ] UTC -> SPICE time conversion
-- [ ] J2000/ICRF-compatible barycentric state vectors
-- [ ] body-fixed orientation transforms
-- [ ] provenance surfaced in runtime
-- [ ] verification against JPL reference vectors
+- [x] select DE442s as preferred planetary kernel
+- [x] retain DE440s as verified fallback
+- [x] parse pinned NAIF leap-seconds data
+- [x] UTC -> ET/TDB conversion for ordinary UTC labels
+- [x] DAF/SPK Type 2 reader in TypeScript
+- [x] J2000 / SSB barycentric state vectors
+- [x] position + analytic velocity
+- [x] Web Worker execution
+- [x] kernel byte-length + official MD5 validation
+- [x] provenance surfaced at runtime
+- [ ] real-kernel golden-vector verification against SPICE/Horizons
+- [ ] literal UTC leap-second (`:60`) input
 
 ## M2 — First physically rendered bodies
 
-- [ ] solar radiometric source
-- [ ] Earth reference ellipsoid
-- [ ] Moon reference shape
-- [ ] physically correct angular size
-- [ ] eclipse/shadow geometry
-- [ ] reversed-Z / large-range depth strategy
+- [x] physical Sun radius
+- [x] physical Earth mean radius
+- [x] physical Moon mean radius
+- [x] no ambient light
+- [x] inverse-square solar illumination
+- [x] physically correct angular size from geometry
+- [x] physical camera framing / navigation
+- [ ] finite-Sun penumbra/umbra model
+- [ ] validated solar radiometry / exposure calibration
 
-## M3 — Surface reality
+## M3 — Authoritative orientation and surface reality
 
+- [ ] reference-frame service
+- [ ] PCK/FK kernel ingestion
+- [ ] Earth orientation source and transform
+- [ ] lunar body-fixed orientation
+- [ ] subsolar-point validation against SPICE
+- [ ] Earth ellipsoid
 - [ ] multiresolution terrain architecture
 - [ ] Earth DEM pipeline
 - [ ] lunar DEM pipeline
-- [ ] real imagery/albedo products
+- [ ] provenance-aware imagery/albedo products
 - [ ] streaming cache and LOD validation
 
 ## M4 — Optical reality
 
 - [ ] atmospheric scattering
-- [ ] exposure/instrument model
-- [ ] stellar Gaia catalog pipeline
-- [ ] point-spread-function rendering
+- [ ] ocean BRDF/Fresnel model
+- [ ] calibrated exposure/instrument model
 - [ ] observer-corrected light-time mode
+- [ ] aberration model
+
+## M5 — Stellar space
+
+- [ ] Gaia catalogue pipeline
+- [ ] proper-motion propagation
+- [ ] radial-velocity propagation where available
+- [ ] point-spread-function rendering
+- [ ] catalogue LOD/culling

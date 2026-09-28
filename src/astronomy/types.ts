@@ -1,20 +1,25 @@
-import type { Vec3d } from "../core/Vec3d";
+import type { Vec3d } from "../core/Vec3d.js";
 
 export interface Epoch {
-  /** Human-readable input/output timestamp. Physics providers may convert this internally to TDB/ET. */
   readonly isoUtc: string;
 }
 
 export interface AstronomicalProvenance {
-  readonly provider: string;
+  readonly provider: "JPL-SPK";
   readonly dataset: string;
-  readonly referenceFrame: string;
+  readonly kernelMd5: string;
+  readonly kernelSource: string;
+  readonly referenceFrame: "J2000";
+  readonly center: "SSB";
+  readonly timeScale: "TDB/ET";
+  readonly computationMode: "geometric";
 }
 
 export interface CelestialState {
-  /** Absolute position in meters in the declared reference frame. */
+  readonly bodyId: number;
+  readonly epochUtc: string;
+  readonly etSecondsPastJ2000: number;
   readonly positionMeters: Vec3d;
-  /** Absolute velocity in meters per second in the declared reference frame. */
   readonly velocityMetersPerSecond: Vec3d;
   readonly provenance: AstronomicalProvenance;
 }
