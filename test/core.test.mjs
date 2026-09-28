@@ -7,6 +7,8 @@ import { SpkKernel } from "../.test-dist/src/astronomy/spk/SpkKernel.js";
 import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronomy/time/LeapSecondKernel.js";
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
+import { BinaryPck } from "../.test-dist/src/astronomy/pck/BinaryPck.js";
+import { multiplyMatrix3, transposeMatrix3 } from "../.test-dist/src/astronomy/frames/Matrix3.js";
 
 function encode(text) {
   return new TextEncoder().encode(text);
@@ -96,4 +98,66 @@ test("SPK Type 2 reader reconstructs position and velocity", () => {
   assert.ok(Math.abs(state.velocityKmPerSecond.x - 0.2) < 1e-12);
   assert.ok(Math.abs(state.velocityKmPerSecond.y - 0.4) < 1e-12);
   assert.ok(Math.abs(state.velocityKmPerSecond.z - 0.6) < 1e-12);
+});
+
+
+function syntheticPck() {
+  const buffer = new ArrayBuffer(4096);
+  const view = new DataView(buffer);
+  const le = true;
+  writeAscii(view, 0, "DAF/PCK ", 8);
+  view.setInt32(8, 2, le);
+  view.setInt32(12, 5, le);
+  writeAscii(view, 16, "UNIVERSE MODEL SYNTHETIC PCK", 60);
+  view.setInt32(76, 2, le);
+  view.setInt32(80, 2, le);
+  view.setInt32(84, 397, le);
+  writeAscii(view, 88, "LTL-IEEE", 8);
+
+  const summaryRecord = 1024;
+  view.setFloat64(summaryRecord, 0, le);
+  view.setFloat64(summaryRecord + 8, 0, le);
+  view.setFloat64(summaryRecord + 16, 1, le);
+  const summary = summaryRecord + 24;
+  view.setFloat64(summary, -10, le);
+  view.setFloat64(summary + 8, 10, le);
+  const ints = summary + 16;
+  view.setInt32(ints, 3000, le);
+  view.setInt32(ints + 4, 17, le);
+  view.setInt32(ints + 8, 2, le);
+  view.setInt32(ints + 12, 385, le);
+  view.setInt32(ints + 16, 396, le);
+
+  const data = 3072;
+  const doubles = [
+    0, 10,
+    0.1, 0.02,
+    0.2, 0.04,
+    0.3, 0.06,
+    -10, 20, 8, 1,
+  ];
+  doubles.forEach((value, index) => view.setFloat64(data + index * 8, value, le));
+  return buffer;
+}
+
+test("binary PCK Type 2 reconstructs Euler angles, rates, and orthonormal frame transform", () => {
+  const pck = new BinaryPck(syntheticPck());
+  const orientation = pck.orientation(3000, 0);
+
+  assert.equal(orientation.baseFrameId, 17);
+  assert.ok(Math.abs(orientation.angle1Radians - 0.1) < 1e-12);
+  assert.ok(Math.abs(orientation.angle2Radians - 0.2) < 1e-12);
+  assert.ok(Math.abs(orientation.angle3Radians - 0.3) < 1e-12);
+  assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[0] - 0.002) < 1e-12);
+  assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[1] - 0.004) < 1e-12);
+  assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[2] - 0.006) < 1e-12);
+
+  const identity = multiplyMatrix3(
+    orientation.j2000ToBodyFixed,
+    transposeMatrix3(orientation.j2000ToBodyFixed),
+  );
+  const expected = [1,0,0, 0,1,0, 0,0,1];
+  for (let i = 0; i < 9; i += 1) {
+    assert.ok(Math.abs(identity[i] - expected[i]) < 1e-12, `matrix component ${i}`);
+  }
 });

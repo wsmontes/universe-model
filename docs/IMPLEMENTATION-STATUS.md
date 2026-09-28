@@ -12,6 +12,13 @@
 - finite-Sun eclipse shadow model with umbra/penumbra from angular disk overlap;
 - absolute-epoch temporal playback, including reverse time and accelerated rates;
 - camera target following that does not move astronomical bodies;
+- DAF/binary-PCK Type 2 parser for Euler orientation;
+- SPICE 3-1-3 frame-rotation reconstruction;
+- J2000 and ECLIPJ2000 inertial base-frame support;
+- current high-precision Earth ITRF93 PCK ingestion;
+- DE440 lunar principal-axis PCK ingestion;
+- authoritative pck00011 Sun/Earth/Moon radii;
+- oblate Earth ellipsoid rendering with ellipsoid normals;
 - NAIF LSK parsing;
 - UTC -> TAI -> TT -> ET/TDB conversion for ordinary UTC labels;
 - DAF file/summary parsing;
@@ -50,7 +57,8 @@ The current test suite covers:
 2. Chebyshev value and analytic derivative;
 3. leap-second step and UTC -> ET sanity checks;
 4. finite-disk overlap cases for umbra, penumbra and no eclipse;
-5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction.
+5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction;
+6. a synthetic binary-PCK Type 2 orientation, including angular rates and orthonormal matrix reconstruction.
 
 ## Not yet claimed
 
@@ -58,8 +66,8 @@ The following are deliberately not presented as solved:
 
 - literal `:60` UTC leap-second input;
 - full CSPICE equivalence over all time parsing cases;
-- body-fixed Earth/Moon orientation;
-- oblate Earth rendering;
+- independent golden-vector validation of Earth/Moon orientation against CSPICE;
+- long-range high-precision Earth orientation outside the pinned daily PCK coverage;
 - DEM/terrain;
 - geographic/albedo textures;
 - atmosphere or ocean BRDF;

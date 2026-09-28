@@ -108,3 +108,17 @@ The Sun is not treated as a point shadow source. Earth and Moon shadows use the 
 
 This is separate from the surface material model and requires no eclipse-specific event scripting.
 
+## Binary PCK orientation service
+
+High-precision body orientation is reconstructed in the astronomy worker from NAIF binary PCK Type 2 segments. The DAF descriptor identifies the PCK frame class and inertial base frame. At the requested ET, three Chebyshev Euler-angle expansions are evaluated in radians.
+
+The base-frame to body-fixed transform uses the SPICE 3-1-3 convention:
+
+```text
+R = [ANGLE_3]3 [ANGLE_2]1 [ANGLE_1]3
+```
+
+Earth's current high-precision PCK is relative to ECLIPJ2000; the engine composes the fixed J2000 -> ECLIPJ2000 rotation before applying the PCK rotation. The lunar DE440 PA PCK is referenced directly to J2000/ICRF.
+
+The renderer receives the transpose as body-fixed -> J2000 and uses it to transform both ellipsoid vertices and analytically correct ellipsoid normals. An asymmetric/oblate body is not rendered if its required orientation is unavailable for the requested epoch.
+

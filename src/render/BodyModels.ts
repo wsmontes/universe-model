@@ -1,41 +1,66 @@
+import { pckRadii } from "../astronomy/pck/ShapeConstants.js";
+
 export interface BodyRenderModel {
   readonly bodyId: number;
   readonly name: string;
+  /** Conservative scalar radius used for framing and eclipse bounds. */
   readonly radiusMeters: number;
+  readonly radiiMeters: readonly [number, number, number];
+  readonly shapeSource: string;
   readonly diffuseReflectance: number;
   readonly baseReflectanceRgb: readonly [number, number, number];
   readonly emissive: boolean;
   readonly modelDescription: string;
 }
 
+function model(
+  bodyId: number,
+  name: string,
+  diffuseReflectance: number,
+  baseReflectanceRgb: readonly [number, number, number],
+  emissive: boolean,
+  modelDescription: string,
+): BodyRenderModel {
+  const radii = pckRadii(bodyId);
+  const tuple = [radii.xMeters, radii.yMeters, radii.zMeters] as const;
+  return Object.freeze({
+    bodyId,
+    name,
+    radiusMeters: Math.max(...tuple),
+    radiiMeters: tuple,
+    shapeSource: radii.source,
+    diffuseReflectance,
+    baseReflectanceRgb,
+    emissive,
+    modelDescription,
+  });
+}
+
 export const BODY_MODELS: Readonly<Record<number, BodyRenderModel>> = Object.freeze({
-  10: Object.freeze({
-    bodyId: 10,
-    name: "Sun",
-    radiusMeters: 695_700_000,
-    diffuseReflectance: 0,
-    baseReflectanceRgb: [1, 1, 1] as const,
-    emissive: true,
-    modelDescription: "IAU nominal-radius sphere; emissive display model",
-  }),
-  399: Object.freeze({
-    bodyId: 399,
-    name: "Earth",
-    radiusMeters: 6_371_008.8,
-    diffuseReflectance: 0.30,
-    baseReflectanceRgb: [1, 1, 1] as const,
-    emissive: false,
-    modelDescription: "mean-radius sphere; uniform diffuse reflectance; no invented texture",
-  }),
-  301: Object.freeze({
-    bodyId: 301,
-    name: "Moon",
-    radiusMeters: 1_737_400,
-    diffuseReflectance: 0.12,
-    baseReflectanceRgb: [0.95, 0.95, 0.95] as const,
-    emissive: false,
-    modelDescription: "mean-radius sphere; uniform diffuse reflectance; no invented texture",
-  }),
+  10: model(
+    10,
+    "Sun",
+    0,
+    [1, 1, 1],
+    true,
+    "pck00011 sphere; emissive display model",
+  ),
+  399: model(
+    399,
+    "Earth",
+    0.30,
+    [1, 1, 1],
+    false,
+    "pck00011 oblate ellipsoid; uniform diffuse reflectance",
+  ),
+  301: model(
+    301,
+    "Moon",
+    0.12,
+    [0.95, 0.95, 0.95],
+    false,
+    "pck00011 sphere; uniform diffuse reflectance",
+  ),
 });
 
 export function bodyModel(bodyId: number): BodyRenderModel {

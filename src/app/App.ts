@@ -5,6 +5,8 @@ import type { CelestialState } from "../astronomy/types.js";
 import { BODY_NAMES, NAIF } from "../astronomy/spk/naif.js";
 import { DE440S, DE442S } from "../data/KernelManifest.js";
 import { KernelLoader, type LoadedKernel } from "../data/KernelLoader.js";
+import { AuxiliaryKernelLoader, type LoadedOrientationKernel } from "../data/AuxiliaryKernelLoader.js";
+import { ORIENTATION_KERNELS } from "../data/OrientationKernelManifest.js";
 import { bodyModel } from "../render/BodyModels.js";
 import { OrbitCamera } from "../render/OrbitCamera.js";
 import { WebGpuRenderer } from "../render/WebGpuRenderer.js";
@@ -55,6 +57,7 @@ export class App {
   private readonly epochInput = element<HTMLInputElement>("#epoch-input");
   private readonly gpuStatus = element<HTMLElement>("#gpu-status");
   private readonly astronomyStatus = element<HTMLElement>("#astronomy-status");
+  private readonly orientationStatus = element<HTMLElement>("#orientation-status");
   private readonly timeStatus = element<HTMLElement>("#time-status");
   private readonly sourceStatus = element<HTMLElement>("#source-status");
   private readonly integrityStatus = element<HTMLElement>("#integrity-status");
@@ -86,7 +89,8 @@ export class App {
     try {
       this.leapSecondKernelText = await this.loadLeapSecondKernel();
       const loaded = await this.loadBestPlanetaryKernel();
-      await this.initializeProvider(loaded);
+      const orientationKernels = await this.loadOrientationKernels();
+      await this.initializeProvider(loaded, orientationKernels);
       await this.refreshAstronomy(true);
       this.runtimeBadge.textContent = "physical state live";
       this.startAnimationLoop();
@@ -152,6 +156,41 @@ export class App {
     }
   }
 
+  private async loadOrientationKernels(): Promise<readonly LoadedOrientationKernel[]> {
+    const loader = new AuxiliaryKernelLoader((status) => {
+      this.orientationStatus.textContent = status;
+    });
+
+    const results = await Promise.allSettled(
+      ORIENTATION_KERNELS.map((manifest) => loader.load(manifest)),
+    );
+
+    const loaded: LoadedOrientationKernel[] = [];
+    const failures: string[] = [];
+    results.forEach((result, index) => {
+      const manifest = ORIENTATION_KERNELS[index];
+      if (result.status === "fulfilled") {
+        loaded.push(result.value);
+      } else if (manifest) {
+        failures.push(`${manifest.frameName}: ${this.errorMessage(result.reason)}`);
+      }
+    });
+
+    if (loaded.length > 0) {
+      this.orientationStatus.textContent =
+        loaded.map((kernel) => `${kernel.manifest.frameName} · MD5 ${kernel.md5.slice(0, 8)}…`).join(" | ");
+    } else {
+      this.orientationStatus.textContent = "no binary PCK available";
+    }
+
+    if (failures.length > 0) {
+      this.message.textContent =
+        `Orientation data partially unavailable: ${failures.join(" | ")}`;
+    }
+
+    return Object.freeze(loaded);
+  }
+
   private async loadLocalKernel(file: File): Promise<void> {
     const manifest = [DE442S, DE440S].find((candidate) => candidate.expectedBytes === file.size);
     if (!manifest) {
@@ -165,7 +204,8 @@ export class App {
         this.message.textContent = status;
       });
       const loaded = await loader.fromFile(file, manifest);
-      await this.initializeProvider(loaded);
+      const orientationKernels = await this.loadOrientationKernels();
+      await this.initializeProvider(loaded, orientationKernels);
       await this.refreshAstronomy(true);
       this.runtimeBadge.textContent = "physical state live";
       this.startAnimationLoop();
@@ -174,7 +214,10 @@ export class App {
     }
   }
 
-  private async initializeProvider(loaded: LoadedKernel): Promise<void> {
+  private async initializeProvider(
+    loaded: LoadedKernel,
+    orientationKernels: readonly LoadedOrientationKernel[],
+  ): Promise<void> {
     this.provider?.dispose();
     const provider = new JplKernelProvider();
     this.astronomyStatus.textContent = `Parsing ${loaded.manifest.displayName} in worker…`;
@@ -183,10 +226,12 @@ export class App {
       manifest: loaded.manifest,
       source: loaded.source,
       leapSecondKernelText: this.leapSecondKernelText,
+      orientationKernels,
     });
     this.provider = provider;
     this.astronomyStatus.textContent = `${loaded.manifest.displayName} · ${kernelName || "SPK"}`;
-    this.sourceStatus.textContent = loaded.source;
+    this.sourceStatus.textContent =
+      [loaded.source, ...orientationKernels.map((kernel) => kernel.manifest.frameName)].join(" | ");
     this.integrityStatus.textContent = `MD5 verified ${loaded.md5}`;
   }
 
@@ -337,7 +382,12 @@ export class App {
     const model = bodyModel(this.frameSelection);
     this.targetName.textContent = BODY_NAMES[this.frameSelection] ?? String(this.frameSelection);
     this.targetDistance.textContent = formatDistance(magnitude(state.positionMeters));
-    this.surfaceModel.textContent = model.modelDescription;
+    this.surfaceModel.textContent =
+      state.orientation
+        ? `${model.modelDescription} · ${state.orientation.provenance.frameName}`
+        : state.orientationUnavailableReason
+          ? `not rendered accurately: ${state.orientationUnavailableReason}`
+          : model.modelDescription;
   }
 
   private state(bodyId: number): CelestialState {

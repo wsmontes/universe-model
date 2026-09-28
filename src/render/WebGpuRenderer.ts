@@ -14,9 +14,12 @@ struct SceneUniforms {
 
 struct BodyUniforms {
   centerRadius: vec4<f32>,
-  colorReflectance: vec4<f32>,
-  flags: vec4<f32>,
+  radiiReflectance: vec4<f32>,
+  colorEmissive: vec4<f32>,
   occluderCenterRadius: vec4<f32>,
+  rotationColumn0: vec4<f32>,
+  rotationColumn1: vec4<f32>,
+  rotationColumn2: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -30,11 +33,19 @@ struct VertexOutput {
 
 @vertex
 fn vertexMain(@location(0) unitPosition: vec3<f32>) -> VertexOutput {
-  let worldPosition = body.centerRadius.xyz + unitPosition * body.centerRadius.w;
+  let bodyToJ2000 = mat3x3<f32>(
+    body.rotationColumn0.xyz,
+    body.rotationColumn1.xyz,
+    body.rotationColumn2.xyz
+  );
+  let bodyFixedPosition = unitPosition * body.radiiReflectance.xyz;
+  let worldPosition = body.centerRadius.xyz + bodyToJ2000 * bodyFixedPosition;
+  let bodyFixedNormal = normalize(unitPosition / body.radiiReflectance.xyz);
+
   var output: VertexOutput;
   output.clipPosition = scene.viewProjection * vec4<f32>(worldPosition, 1.0);
   output.worldPosition = worldPosition;
-  output.normal = normalize(unitPosition);
+  output.normal = normalize(bodyToJ2000 * bodyFixedNormal);
   return output;
 }
 
@@ -102,7 +113,7 @@ fn solarVisibility(worldPosition: vec3<f32>) -> f32 {
 
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
-  let emissive = body.flags.x > 0.5;
+  let emissive = body.colorEmissive.w > 0.5;
   let exposure = scene.exposurePadding.x;
   if (emissive) {
     return vec4<f32>(displayResponse(vec3<f32>(20.0), exposure), 1.0);
@@ -116,7 +127,7 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let irradianceRelativeToEarth = (astronomicalUnitMeters / distanceToSun) *
     (astronomicalUnitMeters / distanceToSun);
   let visibleSolarDisk = solarVisibility(input.worldPosition);
-  let reflected = body.colorReflectance.rgb * body.colorReflectance.a *
+  let reflected = body.colorEmissive.rgb * body.radiiReflectance.w *
     cosine * irradianceRelativeToEarth * visibleSolarDisk;
   return vec4<f32>(displayResponse(reflected, exposure), 1.0);
 }
@@ -244,19 +255,32 @@ export class WebGpuRenderer {
     sceneData.set([exposure, 0, 0, 0], 20);
     device.queue.writeBuffer(sceneBuffer, 0, sceneData);
 
-    for (const state of states) {
+    const renderableStates = states.filter((state) => {
+      const model = bodyModel(state.bodyId);
+      const [rx, ry, rz] = model.radiiMeters;
+      const shapeNeedsOrientation =
+        Math.max(rx, ry, rz) - Math.min(rx, ry, rz) > 0.001;
+      return !shapeNeedsOrientation || Boolean(state.orientation);
+    });
+
+    for (const state of renderableStates) {
       const resource = this.bodyResource(state.bodyId);
       const model = bodyModel(state.bodyId);
       const local = subtract(state.positionMeters, camera.positionMeters);
-      const bodyData = new Float32Array(16);
+      const bodyData = new Float32Array(28);
       bodyData.set([local.x, local.y, local.z, model.radiusMeters], 0);
+      bodyData.set([
+        model.radiiMeters[0],
+        model.radiiMeters[1],
+        model.radiiMeters[2],
+        model.diffuseReflectance,
+      ], 4);
       bodyData.set([
         model.baseReflectanceRgb[0],
         model.baseReflectanceRgb[1],
         model.baseReflectanceRgb[2],
-        model.diffuseReflectance,
-      ], 4);
-      bodyData.set([model.emissive ? 1 : 0, 0, 0, 0], 8);
+        model.emissive ? 1 : 0,
+      ], 8);
 
       const occluder = state.bodyId === 399 ? moon : state.bodyId === 301 ? earth : undefined;
       if (occluder) {
@@ -270,6 +294,15 @@ export class WebGpuRenderer {
       } else {
         bodyData.set([0, 0, 0, 0], 12);
       }
+
+      const m = state.orientation?.bodyFixedToJ2000 ?? [
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
+      ];
+      bodyData.set([m[0], m[3], m[6], 0], 16);
+      bodyData.set([m[1], m[4], m[7], 0], 20);
+      bodyData.set([m[2], m[5], m[8], 0], 24);
 
       device.queue.writeBuffer(resource.uniformBuffer, 0, bodyData);
     }
@@ -294,7 +327,7 @@ export class WebGpuRenderer {
     pass.setVertexBuffer(0, vertexBuffer);
     pass.setIndexBuffer(indexBuffer, "uint32");
 
-    for (const state of states) {
+    for (const state of renderableStates) {
       pass.setBindGroup(1, this.bodyResource(state.bodyId).bindGroup);
       pass.drawIndexed(this.indexCount);
     }
@@ -337,7 +370,7 @@ export class WebGpuRenderer {
     if (!pipeline) throw new Error("GPU pipeline is not initialized.");
     const uniformBuffer = device.createBuffer({
       label: `body-${bodyId}-uniforms`,
-      size: 64,
+      size: 112,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     const bindGroup = device.createBindGroup({

@@ -41,12 +41,12 @@
 
 ## M3 — Authoritative orientation and surface reality
 
-- [ ] reference-frame service
-- [ ] PCK/FK kernel ingestion
-- [ ] Earth orientation source and transform
-- [ ] lunar body-fixed orientation
-- [ ] subsolar-point validation against SPICE
-- [ ] Earth ellipsoid
+- [x] reference-frame service for J2000/ECLIPJ2000 + binary PCK Type 2
+- [x] high-precision Earth and lunar binary PCK ingestion
+- [x] Earth ITRF93 source and transform
+- [x] lunar MOON_PA_DE440 body-fixed orientation
+- [ ] subsolar-point / frame-matrix golden validation against CSPICE
+- [x] Earth pck00011 oblate ellipsoid
 - [ ] multiresolution terrain architecture
 - [ ] Earth DEM pipeline
 - [ ] lunar DEM pipeline

@@ -48,3 +48,46 @@ Verified bytes are then eligible for browser cache storage.
 ## Surface and stellar data
 
 No external surface map, DEM, cloud field, night-light layer, or stellar catalogue is part of the first milestone. Each will receive its own provenance record before it can appear in the physical scene.
+
+## Body shape constants
+
+The first body shapes are pinned from NASA/JPL NAIF `pck00011.tpc`:
+
+- Sun `BODY10_RADII = (695700, 695700, 695700) km`
+- Earth `BODY399_RADII = (6378.1366, 6378.1366, 6356.7519) km`
+- Moon `BODY301_RADII = (1737.4, 1737.4, 1737.4) km`
+
+These are stored in SI meters in `ShapeConstants.ts`. Earth is therefore rendered as an oblate ellipsoid once an authoritative body-fixed orientation is available.
+
+## High-precision Earth orientation
+
+- Product: `earth_000101_261224_260927.bpc`
+- Producer: NASA/JPL NAIF
+- Created: 2026-09-27
+- Last observed EOP datum: 2026-09-27 00:00 UTC
+- Coverage: 2000-01-01 through 2026-12-24 (TDB)
+- PCK frame class: `3000`
+- Body-fixed frame: `ITRF93`
+- Inertial base frame: `ECLIPJ2000`
+- Source: `https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/earth_000101_261224_260927.bpc`
+
+The exact immutable file name is used instead of the moving `earth_latest_high_prec.bpc` alias so browser caches cannot silently retain a previous orientation solution. The loader computes and surfaces the downloaded file's MD5. Unlike the DE44x planetary SPK manifests, this orientation product currently does not carry a separately pinned expected MD5 in the project.
+
+## High-precision lunar orientation
+
+- Product: `moon_pa_de440_200625.bpc`
+- Compatible FK: `moon_de440_250416.tf`
+- Producer: NASA/JPL NAIF / JPL Solar System Dynamics
+- Coverage: 1549-12-31 through 2650-01-25 (TDB)
+- PCK frame class: `31008`
+- Frame: `MOON_PA_DE440`
+- Generic alias in the current FK: `MOON_PA`
+- Inertial base frame: ICRF/J2000
+- Source: `https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/moon_pa_de440_200625.bpc`
+
+The runtime uses the binary PCK's principal-axis frame directly; it does not approximate lunar orientation with the lower-fidelity `IAU_MOON` text-PCK model.
+
+## Binary PCK integrity
+
+Orientation kernels are fetched only from the official NASA/JPL NAIF endpoint, cached by exact immutable URL, hashed in the browser, and structurally validated as DAF/PCK files. The parser additionally requires the expected frame class to exist before the kernel is accepted by the astronomy worker.
+
