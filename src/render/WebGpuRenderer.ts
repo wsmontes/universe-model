@@ -4,6 +4,11 @@ import type { CelestialState } from "../astronomy/types.js";
 import type { CameraState } from "./OrbitCamera.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "./AtmosphereModel.js";
 import { bodyModel } from "./BodyModels.js";
+import { SurfaceTextureLoader, type LoadedSurfaceTexture } from "./SurfaceTextureLoader.js";
+import {
+  surfaceAssetForBody,
+  type SurfaceTextureAsset,
+} from "./SurfaceTextureManifest.js";
 import { cameraRotation, multiplyMat4, reversedInfinitePerspective } from "./math.js";
 import { createUnitSphereMesh } from "./sphereMesh.js";
 
@@ -23,15 +28,19 @@ struct BodyUniforms {
   rotationColumn0: vec4<f32>,
   rotationColumn1: vec4<f32>,
   rotationColumn2: vec4<f32>,
+  surfaceParams: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
 @group(1) @binding(0) var<uniform> body: BodyUniforms;
+@group(2) @binding(0) var surfaceTexture: texture_2d<f32>;
+@group(2) @binding(1) var surfaceSampler: sampler;
 
 struct VertexOutput {
   @builtin(position) clipPosition: vec4<f32>,
   @location(0) worldPosition: vec3<f32>,
   @location(1) normal: vec3<f32>,
+  @location(2) bodyDirection: vec3<f32>,
 }
 
 @vertex
@@ -49,6 +58,7 @@ fn vertexMain(@location(0) unitPosition: vec3<f32>) -> VertexOutput {
   output.clipPosition = scene.viewProjection * vec4<f32>(worldPosition, 1.0);
   output.worldPosition = worldPosition;
   output.normal = normalize(bodyToJ2000 * bodyFixedNormal);
+  output.bodyDirection = normalize(unitPosition);
   return output;
 }
 
@@ -108,6 +118,16 @@ fn solarVisibility(worldPosition: vec3<f32>) -> f32 {
   return clamp(1.0 - overlap / sourceArea, 0.0, 1.0);
 }
 
+fn surfaceUv(bodyDirection: vec3<f32>) -> vec2<f32> {
+  let direction = normalize(bodyDirection);
+  let longitude = atan2(direction.y, direction.x);
+  let latitude = asin(clamp(direction.z, -1.0, 1.0));
+  return vec2<f32>(
+    fract(0.5 + longitude / (2.0 * 3.141592653589793)),
+    0.5 - latitude / 3.141592653589793
+  );
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let emissive = body.colorEmissive.w > 0.5;
@@ -123,8 +143,29 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let irradianceRelativeToEarth = (astronomicalUnitMeters / distanceToSun) *
     (astronomicalUnitMeters / distanceToSun);
   let visibleSolarDisk = solarVisibility(input.worldPosition);
-  let reflected = body.colorEmissive.rgb * body.radiiReflectance.w *
-    cosine * irradianceRelativeToEarth * visibleSolarDisk;
+
+  let direction = normalize(input.bodyDirection);
+  let latitude = asin(clamp(direction.z, -1.0, 1.0));
+  let textureValid =
+    body.surfaceParams.x > 0.5 &&
+    abs(latitude) <= body.surfaceParams.y;
+  let sampledSurface = textureSample(
+    surfaceTexture,
+    surfaceSampler,
+    surfaceUv(direction)
+  ).rgb;
+  var surfaceModulation = vec3<f32>(1.0);
+  if (textureValid) {
+    surfaceModulation = sampledSurface;
+  }
+
+  let reflected =
+    body.colorEmissive.rgb *
+    surfaceModulation *
+    body.radiiReflectance.w *
+    cosine *
+    irradianceRelativeToEarth *
+    visibleSolarDisk;
   return vec4<f32>(reflected, 1.0);
 }
 `;
@@ -406,6 +447,13 @@ export class WebGpuRenderer {
   private bodySceneBuffer: GPUBuffer | null = null;
   private bodySceneBindGroup: GPUBindGroup | null = null;
   private bodyResources = new Map<number, BodyGpuResource>();
+  private surfaceTextureLoader: SurfaceTextureLoader | null = null;
+  private surfaceSampler: GPUSampler | null = null;
+  private fallbackSurfaceTexture: GPUTexture | null = null;
+  private readonly surfaceTextures = new Map<number, LoadedSurfaceTexture>();
+  private readonly surfaceBindGroups = new Map<number, GPUBindGroup>();
+  private readonly surfaceLoadPromises = new Map<string, Promise<LoadedSurfaceTexture>>();
+  private readonly requestedSurfaceAssetIds = new Map<number, string>();
 
   private atmospherePipeline: GPURenderPipeline | null = null;
   private atmosphereBuffer: GPUBuffer | null = null;
@@ -441,6 +489,7 @@ export class WebGpuRenderer {
     this.initializeBodyPipeline();
     this.initializeAtmospherePipeline();
     this.initializeDisplayPipeline();
+    this.initializeSurfaceResources();
 
     const mesh = createUnitSphereMesh();
     this.indexCount = mesh.indices.length;
@@ -459,6 +508,33 @@ export class WebGpuRenderer {
 
     window.addEventListener("resize", this.resize);
     this.resize();
+  }
+
+  async prepareSurfaceEpoch(isoUtc: string): Promise<string> {
+    const assets = [
+      surfaceAssetForBody(399, isoUtc),
+      surfaceAssetForBody(301, isoUtc),
+    ].filter((asset): asset is SurfaceTextureAsset => asset !== null);
+
+    const results = await Promise.allSettled(
+      assets.map((asset) => this.ensureSurfaceTexture(asset)),
+    );
+
+    const summaries: string[] = [];
+    results.forEach((result, index) => {
+      const asset = assets[index];
+      if (!asset) return;
+      if (result.status === "fulfilled") {
+        summaries.push(
+          `${asset.displayName} · ${result.value.width}×${result.value.height}`,
+        );
+      } else {
+        summaries.push(
+          `${asset.displayName}: uniform fallback (${this.errorMessage(result.reason)})`,
+        );
+      }
+    });
+    return summaries.join(" | ");
   }
 
   render(states: readonly CelestialState[], camera: CameraState, exposure = 2.4): void {
@@ -526,7 +602,7 @@ export class WebGpuRenderer {
       const resource = this.bodyResource(state.bodyId);
       const model = bodyModel(state.bodyId);
       const local = subtract(state.positionMeters, camera.positionMeters);
-      const bodyData = new Float32Array(28);
+      const bodyData = new Float32Array(32);
       bodyData.set([local.x, local.y, local.z, model.radiusMeters], 0);
       bodyData.set([
         model.radiiMeters[0],
@@ -562,6 +638,23 @@ export class WebGpuRenderer {
       bodyData.set([m[0], m[3], m[6], 0], 16);
       bodyData.set([m[1], m[4], m[7], 0], 20);
       bodyData.set([m[2], m[5], m[8], 0], 24);
+
+      const surface = state.orientation
+        ? this.surfaceTextures.get(state.bodyId)
+        : undefined;
+      const validLatitudeRadians = surface
+        ? Math.max(
+            Math.abs(surface.asset.validLatitudeDegrees[0]),
+            Math.abs(surface.asset.validLatitudeDegrees[1]),
+          ) * Math.PI / 180
+        : 0;
+      bodyData.set([
+        surface ? 1 : 0,
+        validLatitudeRadians,
+        0,
+        0,
+      ], 28);
+
       device.queue.writeBuffer(resource.uniformBuffer, 0, bodyData);
     }
 
@@ -591,6 +684,7 @@ export class WebGpuRenderer {
     bodyPass.setIndexBuffer(indexBuffer, "uint32");
     for (const state of renderableStates) {
       bodyPass.setBindGroup(1, this.bodyResource(state.bodyId).bindGroup);
+      bodyPass.setBindGroup(2, this.surfaceBindGroup(state.bodyId));
       bodyPass.drawIndexed(this.indexCount);
     }
     bodyPass.end();
@@ -674,6 +768,8 @@ export class WebGpuRenderer {
     this.hdrTexture?.destroy();
     this.atmosphereScatteringTexture?.destroy();
     this.atmosphereTransmittanceTexture?.destroy();
+    this.fallbackSurfaceTexture?.destroy();
+    for (const surface of this.surfaceTextures.values()) surface.texture.destroy();
     for (const resource of this.bodyResources.values()) resource.uniformBuffer.destroy();
     this.bodySceneBuffer?.destroy();
     this.atmosphereBuffer?.destroy();
@@ -858,6 +954,100 @@ export class WebGpuRenderer {
     return normalizedRadiusSquared > 1;
   }
 
+  private initializeSurfaceResources(): void {
+    const device = this.requireDevice();
+    this.surfaceTextureLoader = new SurfaceTextureLoader(device);
+    this.surfaceSampler = device.createSampler({
+      label: "surface-equirectangular-sampler",
+      addressModeU: "repeat",
+      addressModeV: "clamp-to-edge",
+      magFilter: "linear",
+      minFilter: "linear",
+    });
+
+    this.fallbackSurfaceTexture = device.createTexture({
+      label: "surface-uniform-white-fallback",
+      size: [1, 1],
+      format: "rgba8unorm-srgb",
+      usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+    });
+    device.queue.writeTexture(
+      { texture: this.fallbackSurfaceTexture },
+      new Uint8Array([255, 255, 255, 255]),
+      { bytesPerRow: 4, rowsPerImage: 1 },
+      [1, 1],
+    );
+  }
+
+  private async ensureSurfaceTexture(
+    asset: SurfaceTextureAsset,
+  ): Promise<LoadedSurfaceTexture> {
+    this.requestedSurfaceAssetIds.set(asset.bodyId, asset.id);
+
+    const current = this.surfaceTextures.get(asset.bodyId);
+    if (current?.asset.id === asset.id) return current;
+
+    if (current) {
+      current.texture.destroy();
+      this.surfaceTextures.delete(asset.bodyId);
+      this.surfaceBindGroups.delete(asset.bodyId);
+    }
+
+    const existingPromise = this.surfaceLoadPromises.get(asset.id);
+    if (existingPromise) return existingPromise;
+
+    const loader = this.surfaceTextureLoader;
+    if (!loader) throw new Error("Surface texture loader is not initialized.");
+
+    const promise = loader.load(asset)
+      .then((loaded) => {
+        if (this.requestedSurfaceAssetIds.get(asset.bodyId) !== asset.id) {
+          loaded.texture.destroy();
+          throw new Error(
+            `${asset.displayName} was superseded by a newer surface request.`,
+          );
+        }
+        this.surfaceTextures.set(asset.bodyId, loaded);
+        this.surfaceBindGroups.delete(asset.bodyId);
+        return loaded;
+      })
+      .finally(() => {
+        this.surfaceLoadPromises.delete(asset.id);
+      });
+
+    this.surfaceLoadPromises.set(asset.id, promise);
+    return promise;
+  }
+
+  private surfaceBindGroup(bodyId: number): GPUBindGroup {
+    const existing = this.surfaceBindGroups.get(bodyId);
+    if (existing) return existing;
+
+    const device = this.requireDevice();
+    const pipeline = this.bodyPipeline;
+    const sampler = this.surfaceSampler;
+    const fallback = this.fallbackSurfaceTexture;
+    if (!pipeline || !sampler || !fallback) {
+      throw new Error("Surface rendering resources are not initialized.");
+    }
+
+    const texture = this.surfaceTextures.get(bodyId)?.texture ?? fallback;
+    const bindGroup = device.createBindGroup({
+      label: `surface-${bodyId}-bind-group`,
+      layout: pipeline.getBindGroupLayout(2),
+      entries: [
+        { binding: 0, resource: texture.createView() },
+        { binding: 1, resource: sampler },
+      ],
+    });
+    this.surfaceBindGroups.set(bodyId, bindGroup);
+    return bindGroup;
+  }
+
+  private errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+  }
+
   private bodyResource(bodyId: number): BodyGpuResource {
     const existing = this.bodyResources.get(bodyId);
     if (existing) return existing;
@@ -866,7 +1056,7 @@ export class WebGpuRenderer {
     if (!pipeline) throw new Error("GPU body pipeline is not initialized.");
     const uniformBuffer = device.createBuffer({
       label: `body-${bodyId}-uniforms`,
-      size: 112,
+      size: 128,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     const bindGroup = device.createBindGroup({

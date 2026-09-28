@@ -22,6 +22,9 @@
 - linear HDR intermediate render target with a single final display transform;
 - Earth reference-atmosphere single scattering using a physical 100 km shell for an external-space observer;
 - exponential Rayleigh/Mie density profiles and planet/Sun optical-depth integration;
+- body-fixed equirectangular reference-surface texture coordinates;
+- Earth Blue Marble Next Generation monthly 2004 base-map selection by calendar month;
+- sRGB GPU texture decoding before physical illumination;
 - NAIF LSK parsing;
 - UTC -> TAI -> TT -> ET/TDB conversion for ordinary UTC labels;
 - DAF file/summary parsing;
@@ -78,7 +81,9 @@ The following are deliberately not presented as solved:
 - tighter matrix-by-matrix golden validation of Earth orientation against CSPICE;
 - long-range high-precision Earth orientation outside the pinned daily PCK coverage;
 - DEM/terrain;
-- geographic/albedo textures;
+- radiometrically calibrated Earth BRDF/albedo products;
+- scientific lunar WAC Hapke imagery ingestion;
+- live or epoch-matched Earth imagery beyond the dated 2004 BMNG reference composites;
 - inside-atmosphere/ground-observer compositing;
 - multiple atmospheric scattering, ozone absorption, weather-dependent aerosols, clouds, or humidity;
 - ocean BRDF;

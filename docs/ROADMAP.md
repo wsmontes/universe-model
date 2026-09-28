@@ -51,12 +51,13 @@
 - [ ] multiresolution terrain architecture
 - [ ] Earth DEM pipeline
 - [ ] lunar DEM pipeline
-- [ ] provenance-aware imagery/albedo products
+- [x] Earth BMNG dated reference surface-color pipeline
+- [ ] scientific lunar WAC Hapke surface-color pipeline
 - [ ] streaming cache and LOD validation
 
 ## M4 — Optical reality
 
-- [ ] atmospheric scattering
+- [x] first-pass external-view atmospheric single scattering
 - [ ] ocean BRDF/Fresnel model
 - [ ] calibrated exposure/instrument model
 - [ ] observer-corrected light-time mode

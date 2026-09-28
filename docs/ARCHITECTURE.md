@@ -154,3 +154,23 @@ This milestone is **single scattering**. Multiple scattering, ozone absorption, 
 
 
 The current atmosphere pass is intentionally limited to cameras outside the 100 km reference shell. A camera inside the atmosphere is not given an invented approximation: the atmosphere pass is withheld until a depth-aware inside-atmosphere/full-screen integration path is implemented.
+
+
+## Provenance-aware surface color
+
+Surface color is mapped in the authoritative body-fixed frame. The renderer derives longitude and latitude from the body-fixed unit direction:
+
+```text
+longitude = atan2(+Y, +X)
+latitude  = asin(+Z)
+u = 0.5 + longitude / 2pi
+v = 0.5 - latitude / pi
+```
+
+Texture data is uploaded as `rgba8unorm-srgb`, so WebGPU decodes sRGB values to linear RGB before the Lambertian illumination term is applied.
+
+Earth currently uses NASA Blue Marble: Next Generation **Base Map** monthly composites. The source year is 2004; selection follows the requested epoch's calendar month only. The runtime and provenance display therefore treat this as a dated reference surface, not as live Earth imagery or as a radiometrically calibrated BRDF.
+
+The Moon deliberately remains on the uniform physical material. NASA's convenient CGI Moon Kit color map is not used because its documentation states that the visualization product is optimized for aesthetics rather than science. Lunar surface color will instead be taken from the photometrically normalized WAC Hapke product.
+
+If a remote Earth surface asset cannot be fetched with CORS, physical geometry and illumination continue with the uniform material. An unavailable image never blocks astronomical state reconstruction.

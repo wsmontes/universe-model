@@ -134,3 +134,22 @@ Radiative-transfer milestone:
 - integration is single-scattering only.
 
 The model intentionally contains no fabricated weather, cloud, ozone, aerosol map, or humidity field. Those may only be added from separately identified datasets or explicitly declared physical models.
+
+
+## Earth reference surface color
+
+- Product: Blue Marble: Next Generation — Base Map
+- Producer: NASA Earth Observatory
+- Dataset year: 2004
+- Runtime resolution: 5400 × 2700 JPEG per calendar month
+- Topographic shading: not used; the project selects the Base Map product, not the shaded-topography variants
+- Runtime role: dated reference surface color, not current Earth state and not a calibrated BRDF
+- Root source: `https://assets.science.nasa.gov/content/dam/science/esd/eo/images/bmng/bmng-base/`
+
+The requested UTC month selects the corresponding 2004 monthly composite. The data year remains explicitly surfaced in the product ID and status text.
+
+## Lunar surface-color policy
+
+The NASA SVS CGI Moon Kit is intentionally not used as the scientific lunar surface source. NASA documents that visualization map as being adjusted for human vision and optimized for aesthetics, with filled/inpainted polar coverage. Universe Model will ingest the underlying LROC WAC Hapke-normalized product instead.
+
+The WAC Hapke product is photometrically normalized radiance factor (I/F), covers 70°N to 70°S, and is archived in multiple wavelength bands and a 3-band product. Until that scientific product is wired into the browser pipeline, the Moon remains a uniform physical material.

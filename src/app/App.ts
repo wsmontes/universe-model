@@ -53,6 +53,7 @@ export class App {
   private animationHandle: number | null = null;
   private lastEphemerisRequestRealMs = 0;
   private tickInFlight = false;
+  private surfaceEpochKey = "";
 
   private readonly epochInput = element<HTMLInputElement>("#epoch-input");
   private readonly gpuStatus = element<HTMLElement>("#gpu-status");
@@ -61,6 +62,7 @@ export class App {
   private readonly timeStatus = element<HTMLElement>("#time-status");
   private readonly sourceStatus = element<HTMLElement>("#source-status");
   private readonly integrityStatus = element<HTMLElement>("#integrity-status");
+  private readonly surfaceStatus = element<HTMLElement>("#surface-status");
   private readonly runtimeBadge = element<HTMLElement>("#runtime-badge");
   private readonly message = element<HTMLElement>("#message");
   private readonly targetName = element<HTMLElement>("#target-name");
@@ -253,6 +255,7 @@ export class App {
         this.epochInput.value = first.epochUtc.replace(/\.000Z$/, "Z");
         this.timeStatus.textContent = `ET ${first.etSecondsPastJ2000.toFixed(3)} s past J2000 (TDB) · rate ${this.formatRate()}`;
         if (resetClock) this.resetSimulationClock(first.epochUtc);
+        this.prepareSurfacesForEpoch(first.epochUtc);
       }
 
       if (reframe) this.frameCamera();
@@ -266,6 +269,27 @@ export class App {
       this.setSimulationRate(0);
       this.message.textContent = this.errorMessage(error);
     }
+  }
+
+  private prepareSurfacesForEpoch(isoUtc: string): void {
+    const instant = new Date(isoUtc);
+    if (!Number.isFinite(instant.getTime())) return;
+    const key = String(instant.getUTCMonth() + 1).padStart(2, "0");
+    if (key === this.surfaceEpochKey) return;
+
+    this.surfaceEpochKey = key;
+    this.surfaceStatus.textContent = "loading authoritative reference surface maps…";
+    void this.renderer.prepareSurfaceEpoch(isoUtc)
+      .then((summary) => {
+        if (this.surfaceEpochKey !== key) return;
+        this.surfaceStatus.textContent = summary || "uniform physical materials";
+        this.render();
+      })
+      .catch((error) => {
+        if (this.surfaceEpochKey !== key) return;
+        this.surfaceStatus.textContent =
+          `uniform fallback · ${this.errorMessage(error)}`;
+      });
   }
 
   private startAnimationLoop(): void {

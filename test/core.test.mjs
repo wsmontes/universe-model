@@ -8,6 +8,7 @@ import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronom
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "../.test-dist/src/render/AtmosphereModel.js";
+import { earthBmngAssetForUtc } from "../.test-dist/src/render/SurfaceTextureManifest.js";
 import { BinaryPck } from "../.test-dist/src/astronomy/pck/BinaryPck.js";
 import {
   J2000_OBLIQUITY_RADIANS,
@@ -209,4 +210,13 @@ test("Earth reference atmosphere preserves physical 100 km shell geometry", () =
   for (const coefficient of model.rayleighScatteringPerMeterRgb) {
     assert.ok(Number.isFinite(coefficient) && coefficient > 0);
   }
+});
+
+
+test("Earth surface manifest preserves dated BMNG provenance", () => {
+  const september = earthBmngAssetForUtc("2026-09-28T00:00:00Z");
+  assert.equal(september.id, "earth-bmng-base-2004-09");
+  assert.equal(september.dataEpoch, "2004-09");
+  assert.match(september.url, /\/september\/world\.200409\.3x5400x2700\.jpg$/);
+  assert.deepEqual(september.validLatitudeDegrees, [-90, 90]);
 });
