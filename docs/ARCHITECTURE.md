@@ -122,3 +122,13 @@ Earth's current high-precision PCK is relative to ECLIPJ2000; the engine compose
 
 The renderer receives the transpose as body-fixed -> J2000 and uses it to transform both ellipsoid vertices and analytically correct ellipsoid normals. An asymmetric/oblate body is not rendered if its required orientation is unavailable for the requested epoch.
 
+## Runtime orientation integrity gate
+
+The lunar orientation path is checked against a numerical example published in the NAIF DE440 lunar frames kernel. At ET 717768000 seconds past J2000 TDB, the engine computes the geometric Earth-relative-Moon vector from the loaded planetary SPK, transforms it with the loaded MOON_PA_DE440 binary PCK, and compares the result with the published MOON_PA position:
+
+```text
+[ 373997.028, -23558.987, 10284.057 ] km
+```
+
+The runtime allows a deliberately loose cross-ephemeris tolerance of 100 km because DE442s is the preferred planetary SPK while the published example was generated with DE440. The tolerance is meant to detect incorrect axes, signs, multiplication order, or frame direction; it is not presented as a precision benchmark.
+

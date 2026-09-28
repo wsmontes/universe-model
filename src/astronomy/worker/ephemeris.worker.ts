@@ -4,6 +4,7 @@ import { parseLeapSecondKernel } from "../time/LeapSecondKernel.js";
 import { TimeConverter } from "../time/TimeConverter.js";
 import { SpkKernel } from "../spk/SpkKernel.js";
 import { BinaryPck } from "../pck/BinaryPck.js";
+import { transformMatrix3Vector } from "../frames/Matrix3.js";
 
 interface OrientationKernelInit {
   readonly buffer: ArrayBuffer;
@@ -49,6 +50,42 @@ let spk: SpkKernel | null = null;
 let time: TimeConverter | null = null;
 const orientationByBody = new Map<number, LoadedPck>();
 
+const LUNAR_PA_GOLDEN_ET = 717_768_000;
+const LUNAR_PA_GOLDEN_EARTH_FROM_MOON_KM = Object.freeze({
+  x: 373_997.028,
+  y: -23_558.987,
+  z: 10_284.057,
+});
+const LUNAR_PA_GOLDEN_MAX_COMPONENT_ERROR_KM = 100;
+
+function validateLunarPaAgainstNaifReference(): number | null {
+  const lunar = orientationByBody.get(301);
+  if (!lunar || !spk) return null;
+
+  const orientation = lunar.kernel.orientation(
+    lunar.manifest.frameClassId,
+    LUNAR_PA_GOLDEN_ET,
+  );
+  const earthFromMoonJ2000 = spk.state(399, 301, LUNAR_PA_GOLDEN_ET).positionKm;
+  const earthFromMoonPa = transformMatrix3Vector(
+    orientation.j2000ToBodyFixed,
+    earthFromMoonJ2000,
+  );
+
+  const maxErrorKm = Math.max(
+    Math.abs(earthFromMoonPa.x - LUNAR_PA_GOLDEN_EARTH_FROM_MOON_KM.x),
+    Math.abs(earthFromMoonPa.y - LUNAR_PA_GOLDEN_EARTH_FROM_MOON_KM.y),
+    Math.abs(earthFromMoonPa.z - LUNAR_PA_GOLDEN_EARTH_FROM_MOON_KM.z),
+  );
+
+  if (maxErrorKm > LUNAR_PA_GOLDEN_MAX_COMPONENT_ERROR_KM) {
+    throw new Error(
+      `Lunar PA orientation failed NAIF golden validation: max component error ${maxErrorKm.toFixed(3)} km exceeds ${LUNAR_PA_GOLDEN_MAX_COMPONENT_ERROR_KM} km.`,
+    );
+  }
+  return maxErrorKm;
+}
+
 self.addEventListener("message", (event: MessageEvent<InputMessage>) => {
   const message = event.data;
   try {
@@ -76,10 +113,15 @@ self.addEventListener("message", (event: MessageEvent<InputMessage>) => {
         });
       }
 
+      const lunarPaGoldenErrorKm = validateLunarPaAgainstNaifReference();
+
       self.postMessage({
         type: "success",
         requestId: message.requestId,
         kernelName: spk.name || message.manifest.displayName,
+        ...(lunarPaGoldenErrorKm !== null
+          ? { lunarPaGoldenErrorKm }
+          : {}),
       });
       return;
     }

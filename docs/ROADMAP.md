@@ -45,7 +45,8 @@
 - [x] high-precision Earth and lunar binary PCK ingestion
 - [x] Earth ITRF93 source and transform
 - [x] lunar MOON_PA_DE440 body-fixed orientation
-- [ ] subsolar-point / frame-matrix golden validation against CSPICE
+- [x] lunar PA runtime integration check against published NAIF vector
+- [ ] Earth frame-matrix/subsolar-point golden validation against CSPICE
 - [x] Earth pck00011 oblate ellipsoid
 - [ ] multiresolution terrain architecture
 - [ ] Earth DEM pipeline

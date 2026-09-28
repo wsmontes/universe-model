@@ -36,6 +36,7 @@ interface SuccessMessage {
   readonly requestId: number;
   readonly states?: readonly WorkerState[];
   readonly kernelName?: string;
+  readonly lunarPaGoldenErrorKm?: number;
 }
 
 interface ErrorMessage {
@@ -72,6 +73,7 @@ export class JplKernelProvider implements AstronomyProvider {
   private kernelSource = "";
   private initialized = false;
   private kernelName = "";
+  private lunarPaGoldenErrorKm: number | null = null;
 
   constructor() {
     this.worker = new Worker(new URL("../worker/ephemeris.worker.js", import.meta.url), { type: "module" });
@@ -113,6 +115,7 @@ export class JplKernelProvider implements AstronomyProvider {
     const result = await response;
     this.initialized = true;
     this.kernelName = result.kernelName ?? init.manifest.displayName;
+    this.lunarPaGoldenErrorKm = result.lunarPaGoldenErrorKm ?? null;
     return this.kernelName;
   }
 
@@ -185,6 +188,11 @@ export class JplKernelProvider implements AstronomyProvider {
 
   get description(): string {
     return this.kernelName || this.manifest?.displayName || "JPL SPK";
+  }
+
+  get orientationValidationSummary(): string | null {
+    if (this.lunarPaGoldenErrorKm === null) return null;
+    return `NAIF lunar PA golden Δmax=${this.lunarPaGoldenErrorKm.toFixed(3)} km`;
   }
 
   private request(message: object & { requestId: number }, transfer: Transferable[] = []): Promise<SuccessMessage> {

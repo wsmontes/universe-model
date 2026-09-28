@@ -1,6 +1,6 @@
 # Implementation Status
 
-## Implemented and locally validated
+## Implemented
 
 - static TypeScript -> ES module build suitable for branch-based GitHub Pages;
 - no application backend and no GitHub Actions workflow;
@@ -49,6 +49,12 @@ Earth and Moon can occult the finite solar disk. Per-fragment illumination compu
 
 This produces full illumination, partial penumbra, annular visibility, or total umbra from geometry. The model intentionally does not use a point-light shadow map.
 
+## Validation status
+
+Core numerical primitives are covered by synthetic/local tests. The orientation path also contains a runtime integration gate using the official NAIF lunar-frame reference example at ET 717768000: the Earth-relative-Moon position transformed into MOON_PA is compared with the published vector [373997.028, -23558.987, 10284.057] km. A gross frame-order/sign error aborts orientation initialization rather than rendering a false body-fixed frame.
+
+A full real-kernel regression suite executed outside the browser is still pending.
+
 ## Local automated tests
 
 The current test suite covers:
@@ -66,7 +72,7 @@ The following are deliberately not presented as solved:
 
 - literal `:60` UTC leap-second input;
 - full CSPICE equivalence over all time parsing cases;
-- independent golden-vector validation of Earth/Moon orientation against CSPICE;
+- tighter matrix-by-matrix golden validation of Earth orientation against CSPICE;
 - long-range high-precision Earth orientation outside the pinned daily PCK coverage;
 - DEM/terrain;
 - geographic/albedo textures;
@@ -76,4 +82,4 @@ The following are deliberately not presented as solved:
 - Gaia star catalogue;
 - empirical comparison against a real DE442s kernel in this repository's automated test environment.
 
-The browser runtime is designed to load a real kernel and expose its verified MD5. A reference-vector validation suite against SPICE/Horizons remains the next scientific gate.
+The browser runtime is designed to load real kernels and expose their provenance. Planetary SPK identity is pinned by expected NAIF MD5; orientation PCKs are pinned by immutable official URLs, runtime hashes, DAF/PCK structure, expected frame class, and the lunar NAIF integration check. A broader reference-vector suite against CSPICE/Horizons remains a scientific gate.

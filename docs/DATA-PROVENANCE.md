@@ -91,3 +91,13 @@ The runtime uses the binary PCK's principal-axis frame directly; it does not app
 
 Orientation kernels are fetched only from the official NASA/JPL NAIF endpoint, cached by exact immutable URL, hashed in the browser, and structurally validated as DAF/PCK files. The parser additionally requires the expected frame class to exist before the kernel is accepted by the astronomy worker.
 
+## Lunar orientation numerical reference
+
+The NAIF lunar frames kernel publishes an executable example for 2022-09-30 TDB. It reports ET = 717768000 and the geometric Earth-relative-Moon position in MOON_PA as:
+
+```text
+373997.028  -23558.987  10284.057 km
+```
+
+Universe Model uses this as a runtime convention/integration check after loading the lunar binary PCK. This specifically exercises the SPK center chain, binary PCK Chebyshev evaluation, 3-1-3 Euler convention, matrix direction, and matrix-vector multiplication together.
+

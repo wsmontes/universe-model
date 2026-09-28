@@ -1,3 +1,5 @@
+import type { Vec3d } from "../../core/Vec3d.js";
+
 export type Matrix3 = readonly [
   number, number, number,
   number, number, number,
@@ -82,4 +84,13 @@ export function j2000ToInertialFrame(frameId: number): Matrix3 {
   if (frameId === 1) return IDENTITY_MATRIX3;
   if (frameId === 17) return J2000_TO_ECLIPJ2000;
   throw new Error(`Unsupported PCK inertial base frame ID ${frameId}.`);
+}
+
+
+export function transformMatrix3Vector(m: Matrix3, v: Vec3d): Vec3d {
+  return {
+    x: m[0] * v.x + m[1] * v.y + m[2] * v.z,
+    y: m[3] * v.x + m[4] * v.y + m[5] * v.z,
+    z: m[6] * v.x + m[7] * v.y + m[8] * v.z,
+  };
 }

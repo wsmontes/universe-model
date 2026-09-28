@@ -8,7 +8,7 @@ import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronom
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 import { BinaryPck } from "../.test-dist/src/astronomy/pck/BinaryPck.js";
-import { multiplyMatrix3, transposeMatrix3 } from "../.test-dist/src/astronomy/frames/Matrix3.js";
+import { multiplyMatrix3, transposeMatrix3, transformMatrix3Vector } from "../.test-dist/src/astronomy/frames/Matrix3.js";
 
 function encode(text) {
   return new TextEncoder().encode(text);
@@ -160,4 +160,15 @@ test("binary PCK Type 2 reconstructs Euler angles, rates, and orthonormal frame 
   for (let i = 0; i < 9; i += 1) {
     assert.ok(Math.abs(identity[i] - expected[i]) < 1e-12, `matrix component ${i}`);
   }
+});
+
+
+test("matrix-vector transform follows row-major convention", () => {
+  const matrix = [
+    0, 1, 0,
+    -1, 0, 0,
+    0, 0, 1,
+  ];
+  const result = transformMatrix3Vector(matrix, { x: 2, y: 3, z: 4 });
+  assert.deepEqual(result, { x: 3, y: -2, z: 4 });
 });

@@ -232,7 +232,9 @@ export class App {
     this.astronomyStatus.textContent = `${loaded.manifest.displayName} · ${kernelName || "SPK"}`;
     this.sourceStatus.textContent =
       [loaded.source, ...orientationKernels.map((kernel) => kernel.manifest.frameName)].join(" | ");
-    this.integrityStatus.textContent = `MD5 verified ${loaded.md5}`;
+    const orientationValidation = provider.orientationValidationSummary;
+    this.integrityStatus.textContent =
+      `SPK MD5 verified ${loaded.md5}${orientationValidation ? ` · ${orientationValidation}` : ""}`;
   }
 
   private async refreshAstronomy(
