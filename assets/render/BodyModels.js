@@ -31,7 +31,7 @@ export const BODY_MODELS = Object.freeze({
     0.30,
     [1, 1, 1],
     false,
-    "pck00011 oblate ellipsoid; uniform diffuse reflectance",
+    "pck00011 oblate ellipsoid; BMNG reference color when available",
   ),
   301: model(
     301,

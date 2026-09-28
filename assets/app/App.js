@@ -50,6 +50,7 @@ export class App {
   animationHandle = null;
   lastEphemerisRequestRealMs = 0;
   tickInFlight = false;
+  surfaceEpochKey = "";
 
   epochInput = element("#epoch-input");
   gpuStatus = element("#gpu-status");
@@ -58,6 +59,7 @@ export class App {
   timeStatus = element("#time-status");
   sourceStatus = element("#source-status");
   integrityStatus = element("#integrity-status");
+  surfaceStatus = element("#surface-status");
   runtimeBadge = element("#runtime-badge");
   message = element("#message");
   targetName = element("#target-name");
@@ -245,6 +247,7 @@ export class App {
         this.epochInput.value = first.epochUtc.replace(/\.000Z$/, "Z");
         this.timeStatus.textContent = "ET " + first.etSecondsPastJ2000.toFixed(3) + " s past J2000 (TDB) · rate " + this.formatRate();
         if (resetClock) this.resetSimulationClock(first.epochUtc);
+        this.prepareSurfacesForEpoch(first.epochUtc);
       }
 
       if (reframe) this.frameCamera();
@@ -258,6 +261,27 @@ export class App {
       this.setSimulationRate(0);
       this.message.textContent = this.errorMessage(error);
     }
+  }
+
+  prepareSurfacesForEpoch(isoUtc) {
+    const instant = new Date(isoUtc);
+    if (!Number.isFinite(instant.getTime())) return;
+    const key = String(instant.getUTCMonth() + 1).padStart(2, "0");
+    if (key === this.surfaceEpochKey) return;
+
+    this.surfaceEpochKey = key;
+    this.surfaceStatus.textContent = "loading authoritative reference surface maps…";
+    void this.renderer.prepareSurfaceEpoch(isoUtc)
+      .then((summary) => {
+        if (this.surfaceEpochKey !== key) return;
+        this.surfaceStatus.textContent = summary || "uniform physical materials";
+        this.render();
+      })
+      .catch((error) => {
+        if (this.surfaceEpochKey !== key) return;
+        this.surfaceStatus.textContent =
+          "uniform fallback · " + this.errorMessage(error);
+      });
   }
 
   startAnimationLoop() {
