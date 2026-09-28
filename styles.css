@@ -8,7 +8,7 @@
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; width: 100%; height: 100%; background: #000; }
 body { overflow: hidden; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 
 #universe { display: block; width: 100%; height: 100%; background: #000; }
 
@@ -16,7 +16,7 @@ button, input { font: inherit; }
   position: absolute;
   top: 16px;
   left: 16px;
-  width: min(420px, calc(100vw - 32px));
+  width: min(430px, calc(100vw - 32px));
   padding: 14px;
   border: 1px solid rgb(255 255 255 / 16%);
   background: rgb(5 8 12 / 82%);
@@ -30,11 +30,13 @@ button, input { font: inherit; }
 .badge { padding: 4px 7px; border: 1px solid rgb(255 255 255 / 20%); border-radius: 999px; color: rgb(255 255 255 / 66%); font-size: .7rem; }
 
 .field { display: grid; gap: 5px; margin: 10px 0; color: rgb(255 255 255 / 64%); font-size: .76rem; }
-.field input {
+.field input,
+.speed-field select {
   width: 100%; min-height: 42px; padding: 8px 10px; color: #fff; background: rgb(255 255 255 / 7%);
   border: 1px solid rgb(255 255 255 / 16%); border-radius: 8px; outline: none;
 }
-.field input:focus { border-color: rgb(255 255 255 / 42%); }
+.field input:focus,
+.speed-field select:focus { border-color: rgb(255 255 255 / 42%); }
 
 .button-row { display: flex; flex-wrap: wrap; gap: 7px; margin: 8px 0; }
 button {
@@ -44,6 +46,16 @@ button {
 button:hover { background: rgb(255 255 255 / 11%); }
 button.selected { color: #fff; border-color: rgb(255 255 255 / 42%); background: rgb(255 255 255 / 14%); }
 button:disabled { opacity: .45; cursor: not-allowed; }
+
+.time-controls {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  align-items: end;
+  margin-top: 8px;
+}
+.speed-field { display: grid; gap: 4px; color: rgb(255 255 255 / 54%); font-size: .7rem; }
+.speed-field select { min-height: 38px; }
 
 details { margin-top: 10px; border-top: 1px solid rgb(255 255 255 / 10%); padding-top: 9px; }
 summary { cursor: pointer; color: rgb(255 255 255 / 68%); font-size: .76rem; }
