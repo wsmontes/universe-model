@@ -140,16 +140,19 @@ function syntheticPck() {
   return buffer;
 }
 
-test("binary PCK Type 2 reconstructs Euler angles, rates, and orthonormal frame transform", () => {
+test("binary PCK Type 2 converts stored RA/DEC/W into the SPICE 3-1-3 frame rotation", () => {
   const pck = new BinaryPck(syntheticPck());
   const orientation = pck.orientation(3000, 0);
 
   assert.equal(orientation.baseFrameId, 17);
-  assert.ok(Math.abs(orientation.angle1Radians - 0.1) < 1e-12);
-  assert.ok(Math.abs(orientation.angle2Radians - 0.2) < 1e-12);
+  assert.ok(Math.abs(orientation.rightAscensionRadians - 0.1) < 1e-12);
+  assert.ok(Math.abs(orientation.declinationRadians - 0.2) < 1e-12);
+  assert.ok(Math.abs(orientation.primeMeridianRadians - 0.3) < 1e-12);
+  assert.ok(Math.abs(orientation.angle1Radians - (Math.PI / 2 + 0.1)) < 1e-12);
+  assert.ok(Math.abs(orientation.angle2Radians - (Math.PI / 2 - 0.2)) < 1e-12);
   assert.ok(Math.abs(orientation.angle3Radians - 0.3) < 1e-12);
   assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[0] - 0.002) < 1e-12);
-  assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[1] - 0.004) < 1e-12);
+  assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[1] + 0.004) < 1e-12);
   assert.ok(Math.abs(orientation.angleRatesRadiansPerSecond[2] - 0.006) < 1e-12);
 
   const identity = multiplyMatrix3(

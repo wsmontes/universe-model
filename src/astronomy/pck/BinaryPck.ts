@@ -9,6 +9,7 @@ import {
 } from "../frames/Matrix3.js";
 
 const PCK_TYPE_2 = 2;
+const HALF_PI = Math.PI / 2;
 
 export interface PckSegment {
   readonly startEtSeconds: number;
@@ -23,6 +24,9 @@ export interface PckSegment {
 export interface PckOrientation {
   readonly frameClassId: number;
   readonly baseFrameId: number;
+  readonly rightAscensionRadians: number;
+  readonly declinationRadians: number;
+  readonly primeMeridianRadians: number;
   readonly angle1Radians: number;
   readonly angle2Radians: number;
   readonly angle3Radians: number;
@@ -78,22 +82,35 @@ export class BinaryPck {
       );
     }
 
-    const angles = this.evaluateType2(segment, etSeconds);
-    const baseToBody = pckEulerToBaseToBodyFixed(
-      angles.values[0],
-      angles.values[1],
-      angles.values[2],
-    );
+    const raw = this.evaluateType2(segment, etSeconds);
+
+    // NAIF binary PCK Type 2 records store Chebyshev expansions for
+    // right ascension (RA), declination (DEC), and prime meridian (W).
+    // The base-frame -> PCK-frame rotation is:
+    //   [W]_3 [pi/2 - DEC]_1 [pi/2 + RA]_3
+    const angle1 = HALF_PI + raw.values[0];
+    const angle2 = HALF_PI - raw.values[1];
+    const angle3 = raw.values[2];
+    const angleRates: [number, number, number] = [
+      raw.rates[0],
+      -raw.rates[1],
+      raw.rates[2],
+    ];
+
+    const baseToBody = pckEulerToBaseToBodyFixed(angle1, angle2, angle3);
     const j2000ToBase = j2000ToInertialFrame(segment.baseFrameId);
     const j2000ToBodyFixed = multiplyMatrix3(baseToBody, j2000ToBase);
 
     return Object.freeze({
       frameClassId,
       baseFrameId: segment.baseFrameId,
-      angle1Radians: angles.values[0],
-      angle2Radians: angles.values[1],
-      angle3Radians: angles.values[2],
-      angleRatesRadiansPerSecond: Object.freeze(angles.rates) as readonly [number, number, number],
+      rightAscensionRadians: raw.values[0],
+      declinationRadians: raw.values[1],
+      primeMeridianRadians: raw.values[2],
+      angle1Radians: angle1,
+      angle2Radians: angle2,
+      angle3Radians: angle3,
+      angleRatesRadiansPerSecond: Object.freeze(angleRates) as readonly [number, number, number],
       j2000ToBodyFixed,
       bodyFixedToJ2000: transposeMatrix3(j2000ToBodyFixed),
     });

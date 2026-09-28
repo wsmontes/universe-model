@@ -12,7 +12,7 @@
 - finite-Sun eclipse shadow model with umbra/penumbra from angular disk overlap;
 - absolute-epoch temporal playback, including reverse time and accelerated rates;
 - camera target following that does not move astronomical bodies;
-- DAF/binary-PCK Type 2 parser for Euler orientation;
+- DAF/binary-PCK Type 2 parser for RA/DEC/W orientation;
 - SPICE 3-1-3 frame-rotation reconstruction;
 - J2000 and ECLIPJ2000 inertial base-frame support;
 - current high-precision Earth ITRF93 PCK ingestion;
@@ -64,7 +64,7 @@ The current test suite covers:
 3. leap-second step and UTC -> ET sanity checks;
 4. finite-disk overlap cases for umbra, penumbra and no eclipse;
 5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction;
-6. a synthetic binary-PCK Type 2 orientation, including angular rates and orthonormal matrix reconstruction.
+6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction.
 
 ## Not yet claimed
 

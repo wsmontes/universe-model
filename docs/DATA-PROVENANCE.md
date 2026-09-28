@@ -101,3 +101,17 @@ The NAIF lunar frames kernel publishes an executable example for 2022-09-30 TDB.
 
 Universe Model uses this as a runtime convention/integration check after loading the lunar binary PCK. This specifically exercises the SPK center chain, binary PCK Chebyshev evaluation, 3-1-3 Euler convention, matrix direction, and matrix-vector multiplication together.
 
+
+
+## Binary PCK Type 2 angle convention
+
+NAIF Type 2 binary PCK records store Chebyshev coefficients for RA, DEC and W. They are not directly the three 3-1-3 rotation angles. Universe Model converts them as:
+
+```text
+ANGLE_1 = pi/2 + RA
+ANGLE_2 = pi/2 - DEC
+ANGLE_3 = W
+R = [ANGLE_3]3 [ANGLE_2]1 [ANGLE_1]3
+```
+
+The derivatives follow the same mapping, with the DEC derivative changing sign.

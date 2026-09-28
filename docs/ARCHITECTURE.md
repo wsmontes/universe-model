@@ -90,11 +90,7 @@ There is no ambient light. The Sun is the sole source in the first scene. Non-em
 
 ## Body shape/orientation boundary
 
-The first Earth and Moon visual models are deliberately orientation-independent spheres using declared physical mean radii. No geographic texture is shown because body-fixed orientation has not yet been implemented. Texture, DEM, clouds, and longitude-dependent data are gated on authoritative frame transforms.
-
-## Next architectural boundary
-
-Body-fixed orientation will be a separate frame service driven by authoritative PCK/FK/Earth-orientation data. Rendering code will not infer or approximate body orientation.
+Earth uses the pck00011 oblate reference ellipsoid and is rendered only when an authoritative ITRF93 body-fixed orientation is available for the requested epoch. Moon orientation is reconstructed in the DE440 principal-axes frame. Geographic texture, DEM, clouds, and longitude-dependent data remain gated on provenance-aware surface datasets.
 
 ## Temporal playback
 
@@ -110,9 +106,15 @@ This is separate from the surface material model and requires no eclipse-specifi
 
 ## Binary PCK orientation service
 
-High-precision body orientation is reconstructed in the astronomy worker from NAIF binary PCK Type 2 segments. The DAF descriptor identifies the PCK frame class and inertial base frame. At the requested ET, three Chebyshev Euler-angle expansions are evaluated in radians.
+High-precision body orientation is reconstructed in the astronomy worker from NAIF binary PCK Type 2 segments. The DAF descriptor identifies the PCK frame class and inertial base frame. At the requested ET, the three Chebyshev expansions stored by a Type 2 binary PCK are evaluated as right ascension (RA), declination (DEC), and prime-meridian angle (W). They are converted to the SPICE Euler angles
 
-The base-frame to body-fixed transform uses the SPICE 3-1-3 convention:
+```text
+ANGLE_1 = pi/2 + RA
+ANGLE_2 = pi/2 - DEC
+ANGLE_3 = W
+```
+
+The base-frame to body-fixed transform then uses the SPICE 3-1-3 convention:
 
 ```text
 R = [ANGLE_3]3 [ANGLE_2]1 [ANGLE_1]3
