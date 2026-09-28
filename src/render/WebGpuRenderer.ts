@@ -1,4 +1,5 @@
-import { magnitude, subtract } from "../core/Vec3d.js";
+import { subtract } from "../core/Vec3d.js";
+import { transformMatrix3Vector } from "../astronomy/frames/Matrix3.js";
 import type { CelestialState } from "../astronomy/types.js";
 import type { CameraState } from "./OrbitCamera.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "./AtmosphereModel.js";
@@ -843,9 +844,18 @@ export class WebGpuRenderer {
     earth: CelestialState,
     camera: CameraState,
   ): boolean {
-    const distance = magnitude(subtract(camera.positionMeters, earth.positionMeters));
-    const outer = EARTH_REFERENCE_ATMOSPHERE.outerRadiiMeters;
-    return distance > Math.max(outer[0], outer[1], outer[2]);
+    if (!earth.orientation) return false;
+    const relativeJ2000 = subtract(camera.positionMeters, earth.positionMeters);
+    const relativeBody = transformMatrix3Vector(
+      earth.orientation.j2000ToBodyFixed,
+      relativeJ2000,
+    );
+    const [a, b, c] = EARTH_REFERENCE_ATMOSPHERE.outerRadiiMeters;
+    const normalizedRadiusSquared =
+      (relativeBody.x * relativeBody.x) / (a * a) +
+      (relativeBody.y * relativeBody.y) / (b * b) +
+      (relativeBody.z * relativeBody.z) / (c * c);
+    return normalizedRadiusSquared > 1;
   }
 
   private bodyResource(bodyId: number): BodyGpuResource {

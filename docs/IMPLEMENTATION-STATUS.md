@@ -20,7 +20,7 @@
 - authoritative pck00011 Sun/Earth/Moon radii;
 - oblate Earth ellipsoid rendering with ellipsoid normals;
 - linear HDR intermediate render target with a single final display transform;
-- Earth reference-atmosphere single scattering using a physical 100 km shell;
+- Earth reference-atmosphere single scattering using a physical 100 km shell for an external-space observer;
 - exponential Rayleigh/Mie density profiles and planet/Sun optical-depth integration;
 - NAIF LSK parsing;
 - UTC -> TAI -> TT -> ET/TDB conversion for ordinary UTC labels;
@@ -79,6 +79,7 @@ The following are deliberately not presented as solved:
 - long-range high-precision Earth orientation outside the pinned daily PCK coverage;
 - DEM/terrain;
 - geographic/albedo textures;
+- inside-atmosphere/ground-observer compositing;
 - multiple atmospheric scattering, ozone absorption, weather-dependent aerosols, clouds, or humidity;
 - ocean BRDF;
 - physically calibrated solar radiometry and camera response;

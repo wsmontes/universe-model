@@ -151,3 +151,6 @@ The first Earth atmosphere is a declared reference model rather than a live weat
 - no atmosphere thickness exaggeration, ambient fill, or artistic rim term is used.
 
 This milestone is **single scattering**. Multiple scattering, ozone absorption, altitude-dependent composition, spatially varying aerosol/humidity fields, clouds, and a spectral solar radiance calibration remain separate scientific layers. The current display exposure is still a declared observer/display response rather than a calibrated camera.
+
+
+The current atmosphere pass is intentionally limited to cameras outside the 100 km reference shell. A camera inside the atmosphere is not given an invented approximation: the atmosphere pass is withheld until a depth-aware inside-atmosphere/full-screen integration path is implemented.
