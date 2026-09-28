@@ -36,3 +36,15 @@ export function lambertianRadianceWm2Sr(
     Math.max(0, cosineIncidence) /
     Math.PI;
 }
+
+
+export const HDR_RADIANCE_W_M2_SR_PER_STORAGE_UNIT = 1000;
+export const HDR_STORAGE_UNITS_PER_W_M2_SR =
+  1 / HDR_RADIANCE_W_M2_SR_PER_STORAGE_UNIT;
+
+export function radianceWm2SrToHdrStorage(valueWm2Sr) {
+  if (!Number.isFinite(valueWm2Sr)) {
+    throw new Error("Radiance must be finite.");
+  }
+  return valueWm2Sr * HDR_STORAGE_UNITS_PER_W_M2_SR;
+}
