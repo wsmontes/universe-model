@@ -174,3 +174,53 @@ Earth currently uses NASA Blue Marble: Next Generation **Base Map** monthly comp
 The Moon deliberately remains on the uniform physical material. NASA's convenient CGI Moon Kit color map is not used because its documentation states that the visualization product is optimized for aesthetics rather than science. Lunar surface color will instead be taken from the photometrically normalized WAC Hapke product.
 
 If a remote Earth surface asset cannot be fetched with CORS, physical geometry and illumination continue with the uniform material. An unavailable image never blocks astronomical state reconstruction.
+
+
+## Broadband radiometry
+
+The linear HDR scene now carries a broadband radiance scale in `W·m⁻²·sr⁻¹` rather than arbitrary brightness units.
+
+The pinned solar reference is:
+
+```text
+TSI(1 au) = 1361 W/m²
+1 au      = 149,597,870,700 m exactly
+```
+
+For a Sun-object distance `r`:
+
+```text
+E_sun(r) = 1361 × (1 au / r)²
+```
+
+The initial surface BRDF remains Lambertian. Its outgoing radiance is therefore:
+
+```text
+L_o = rho × E_sun × max(n·s, 0) / pi
+```
+
+before eclipse visibility is applied.
+
+The rendered solar disk is assigned the uniform-disk radiance that reproduces the same 1-au TSI when integrated over the physical angular disk:
+
+```text
+L_sun = TSI / (pi × sin²(alpha_sun_at_1au))
+```
+
+with `alpha` derived from the pinned pck00011 solar radius and exact au.
+
+Atmospheric single scattering uses the same solar irradiance in W/m², so surface and atmosphere are no longer on unrelated brightness scales.
+
+### Observer/display transform
+
+The final display transform is deliberately separate from the physical scene. Its parameter is a **reference radiance** in `W·m⁻²·sr⁻¹`; changing it is analogous to changing an observer/camera response and never changes ephemerides, geometry, radiometry, eclipse state, or atmosphere.
+
+The current mapping is deterministic:
+
+```text
+display_linear = 1 - exp(-scene_radiance / reference_radiance)
+```
+
+followed by the existing approximate sRGB display encoding.
+
+This is not yet a calibrated camera model. It is an explicit observer transform replacing the previous arbitrary dimensionless exposure multiplier.

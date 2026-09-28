@@ -37,7 +37,8 @@
 - [x] physically correct angular size from geometry
 - [x] physical camera framing / target following
 - [x] finite-Sun penumbra/umbra model
-- [ ] validated solar radiometry / exposure calibration
+- [x] broadband TSI-scaled solar/reflected radiometry
+- [ ] spectral solar radiometry / calibrated instrument response
 
 ## M3 — Authoritative orientation and surface reality
 
@@ -59,7 +60,8 @@
 
 - [x] first-pass external-view atmospheric single scattering
 - [ ] ocean BRDF/Fresnel model
-- [ ] calibrated exposure/instrument model
+- [x] explicit deterministic display reference-radiance transform
+- [ ] calibrated spectral exposure/instrument model
 - [ ] observer-corrected light-time mode
 - [ ] aberration model
 

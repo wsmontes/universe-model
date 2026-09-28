@@ -9,6 +9,14 @@ import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "../.test-dist/src/render/AtmosphereModel.js";
 import { earthBmngAssetForUtc } from "../.test-dist/src/render/SurfaceTextureManifest.js";
+import {
+  DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
+  REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
+  lambertianRadianceWm2Sr,
+  solarIrradianceAtDistanceWm2,
+  uniformSolarDiskRadianceWm2Sr,
+} from "../.test-dist/src/render/Radiometry.js";
+import { AU_METERS } from "../.test-dist/src/core/units.js";
 import { BinaryPck } from "../.test-dist/src/astronomy/pck/BinaryPck.js";
 import {
   J2000_OBLIQUITY_RADIANS,
@@ -219,4 +227,25 @@ test("Earth surface manifest preserves dated BMNG provenance", () => {
   assert.equal(september.dataEpoch, "2004-09");
   assert.match(september.url, /\/september\/world\.200409\.3x5400x2700\.jpg$/);
   assert.deepEqual(september.validLatitudeDegrees, [-90, 90]);
+});
+
+
+test("broadband solar radiometry is physically scaled at 1 au", () => {
+  assert.equal(REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2, 1361);
+  assert.equal(DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR, 100);
+  assert.ok(
+    Math.abs(solarIrradianceAtDistanceWm2(AU_METERS) - 1361) < 1e-12,
+  );
+  assert.ok(
+    Math.abs(solarIrradianceAtDistanceWm2(2 * AU_METERS) - 340.25) < 1e-12,
+  );
+
+  const normalEarthLikeRadiance = lambertianRadianceWm2Sr(1361, 0.30, 1);
+  assert.ok(
+    Math.abs(normalEarthLikeRadiance - (1361 * 0.30 / Math.PI)) < 1e-12,
+  );
+
+  const solarDiskRadiance = uniformSolarDiskRadianceWm2Sr();
+  assert.ok(Number.isFinite(solarDiskRadiance));
+  assert.ok(solarDiskRadiance > 1e7);
 });

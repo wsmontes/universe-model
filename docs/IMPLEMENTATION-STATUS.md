@@ -20,6 +20,11 @@
 - authoritative pck00011 Sun/Earth/Moon radii;
 - oblate Earth ellipsoid rendering with ellipsoid normals;
 - linear HDR intermediate render target with a single final display transform;
+- broadband radiometric scene scale in W·m⁻²·sr⁻¹;
+- pinned NASA-reference total solar irradiance of 1361 W/m² at exactly 1 au;
+- uniform solar-disk radiance derived from TSI, physical Sun radius, and exact au;
+- Lambertian reflected radiance with the required 1/π factor;
+- explicit observer/display reference-radiance control that does not modify physical scene state;
 - Earth reference-atmosphere single scattering using a physical 100 km shell for an external-space observer;
 - exponential Rayleigh/Mie density profiles and planet/Sun optical-depth integration;
 - body-fixed equirectangular reference-surface texture coordinates;
@@ -87,7 +92,9 @@ The following are deliberately not presented as solved:
 - inside-atmosphere/ground-observer compositing;
 - multiple atmospheric scattering, ozone absorption, weather-dependent aerosols, clouds, or humidity;
 - ocean BRDF;
-- physically calibrated solar radiometry and camera response;
+- time-varying TSI/SSI tied to solar activity;
+- spectral solar radiance and spectral sensor response;
+- calibrated camera/sensor response beyond the explicit reference-radiance display transform;
 - light-time/aberration observed mode;
 - Gaia star catalogue;
 - empirical comparison against a real DE442s kernel in this repository's automated test environment.

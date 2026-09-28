@@ -63,6 +63,8 @@ export class App {
   private readonly sourceStatus = element<HTMLElement>("#source-status");
   private readonly integrityStatus = element<HTMLElement>("#integrity-status");
   private readonly surfaceStatus = element<HTMLElement>("#surface-status");
+  private readonly displayReferenceRadiance =
+    element<HTMLInputElement>("#display-reference-radiance");
   private readonly runtimeBadge = element<HTMLElement>("#runtime-badge");
   private readonly message = element<HTMLElement>("#message");
   private readonly targetName = element<HTMLElement>("#target-name");
@@ -119,6 +121,9 @@ export class App {
     });
     this.timeRate.addEventListener("change", () => {
       this.setSimulationRate(Number(this.timeRate.value));
+    });
+    this.displayReferenceRadiance.addEventListener("input", () => {
+      this.render();
     });
 
     for (const button of document.querySelectorAll<HTMLButtonElement>("[data-frame]")) {
@@ -388,7 +393,11 @@ export class App {
   private render(): void {
     if (this.states.length === 0) return;
     try {
-      this.renderer.render(this.states, this.camera.state());
+      this.renderer.render(
+        this.states,
+        this.camera.state(),
+        Number(this.displayReferenceRadiance.value),
+      );
       this.updateReadout();
     } catch (error) {
       this.gpuStatus.textContent = `render error: ${this.errorMessage(error)}`;

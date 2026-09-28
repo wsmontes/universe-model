@@ -22,6 +22,7 @@
     "src/data/md5.ts",
     "src/render/eclipse.ts",
     "src/render/AtmosphereModel.ts",
-    "src/render/SurfaceTextureManifest.ts"
+    "src/render/SurfaceTextureManifest.ts",
+    "src/render/Radiometry.ts"
   ]
 }

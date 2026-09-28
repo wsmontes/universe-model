@@ -153,3 +153,17 @@ The requested UTC month selects the corresponding 2004 monthly composite. The da
 The NASA SVS CGI Moon Kit is intentionally not used as the scientific lunar surface source. NASA documents that visualization map as being adjusted for human vision and optimized for aesthetics, with filled/inpainted polar coverage. Universe Model will ingest the underlying LROC WAC Hapke-normalized product instead.
 
 The WAC Hapke product is photometrically normalized radiance factor (I/F), covers 70°N to 70°S, and is archived in multiple wavelength bands and a 3-band product. Until that scientific product is wired into the browser pipeline, the Moon remains a uniform physical material.
+
+
+## Solar irradiance reference
+
+- Reference broadband TSI: 1361 W/m² at 1 au
+- Authority: NASA GSFC solar-irradiance program / SORCE-era consensus
+- Exact au used by project: 149,597,870,700 m (IAU 2012 definition; JPL SSD)
+- Runtime distance law: inverse square using the instantaneous geometric JPL Sun-object distance
+
+NASA notes that TSI is not literally constant: solar activity changes it by roughly 0.1% across the solar cycle, and TSIS-1 reported 1361.6 ± 0.3 W/m² for the 2019 solar minimum. Universe Model currently pins 1361 W/m² as a declared broadband reference and does **not** invent a time-varying solar-activity correction.
+
+The physical Sun radius comes from the project's pinned `pck00011.tpc` body radii. That radius plus the exact au and the reference TSI define the initial uniform solar-disk radiance.
+
+This milestone is broadband. Spectral solar irradiance, limb darkening, wavelength-dependent surface BRDF, and a calibrated sensor spectral response remain separate future layers.
