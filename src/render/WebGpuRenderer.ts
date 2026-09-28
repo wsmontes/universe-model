@@ -149,6 +149,8 @@ export class WebGpuRenderer {
 
   render(states: readonly CelestialState[], camera: CameraState, exposure = 2.4): void {
     const device = this.requireDevice();
+    this.resize();
+
     const context = this.context;
     const pipeline = this.pipeline;
     const sceneBuffer = this.sceneBuffer;
@@ -160,7 +162,6 @@ export class WebGpuRenderer {
       throw new Error("Renderer must be initialized before rendering.");
     }
 
-    this.resize();
     const width = Math.max(1, this.canvas.width);
     const height = Math.max(1, this.canvas.height);
     const nearMeters = Math.max(0.1, camera.distanceMeters * 1e-7);
