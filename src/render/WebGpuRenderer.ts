@@ -252,8 +252,13 @@ fn miePhase(mu: f32, g: f32) -> f32 {
   return (1.0 - gg) / (4.0 * 3.141592653589793 * denominator);
 }
 
+struct AtmosphereOutput {
+  @location(0) scattering: vec4<f32>,
+  @location(1) transmittance: vec4<f32>,
+}
+
 @fragment
-fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
+fn fragmentMain(input: VertexOutput) -> AtmosphereOutput {
   let bodyToWorld = bodyToJ2000();
   let worldToBody = transpose(bodyToWorld);
 
@@ -294,6 +299,11 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let betaMieScattering = atmosphere.mieScatteringScaleHeight.xyz;
   let betaMieExtinction = atmosphere.mieExtinctionPadding.xyz;
   let g = atmosphere.outerRadiiG.w;
+  let astronomicalUnitMeters = 149597870700.0;
+  let sunDistanceMeters = max(length(sunBody), 1.0);
+  let solarIrradianceRelative =
+    (astronomicalUnitMeters / sunDistanceMeters) *
+    (astronomicalUnitMeters / sunDistanceMeters);
 
   let stepLength = (endDistance - startDistance) / 16.0;
   var viewOpticalDepth = vec2<f32>(0.0);
@@ -322,18 +332,18 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     let source =
       betaRayleigh * density.x * rayleighPhase(mu) +
       betaMieScattering * density.y * miePhase(mu, g);
-    scattering += transmittance * source * stepLength;
+    scattering += transmittance * source * stepLength * solarIrradianceRelative;
   }
 
   let viewTransmittance = exp(
     -(betaRayleigh * viewOpticalDepth.x +
       betaMieExtinction * viewOpticalDepth.y)
   );
-  let luminanceTransmittance =
-    dot(viewTransmittance, vec3<f32>(0.2126, 0.7152, 0.0722));
-  let alpha = clamp(1.0 - luminanceTransmittance, 0.0, 1.0);
 
-  return vec4<f32>(scattering, alpha);
+  var output: AtmosphereOutput;
+  output.scattering = vec4<f32>(scattering, 1.0);
+  output.transmittance = vec4<f32>(viewTransmittance, 1.0);
+  return output;
 }
 `;
 
@@ -345,8 +355,10 @@ struct DisplayUniforms {
   padding2: f32,
 }
 
-@group(0) @binding(0) var hdrTexture: texture_2d<f32>;
-@group(0) @binding(1) var<uniform> display: DisplayUniforms;
+@group(0) @binding(0) var bodyTexture: texture_2d<f32>;
+@group(0) @binding(1) var atmosphereScatteringTexture: texture_2d<f32>;
+@group(0) @binding(2) var atmosphereTransmittanceTexture: texture_2d<f32>;
+@group(0) @binding(3) var<uniform> display: DisplayUniforms;
 
 @vertex
 fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec4<f32> {
@@ -361,7 +373,17 @@ fn vertexMain(@builtin(vertex_index) vertexIndex: u32) -> @builtin(position) vec
 @fragment
 fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
   let pixel = vec2<i32>(position.xy);
-  let linear = max(textureLoad(hdrTexture, pixel, 0).rgb, vec3<f32>(0.0));
+  let bodyLinear = max(textureLoad(bodyTexture, pixel, 0).rgb, vec3<f32>(0.0));
+  let scattering = max(
+    textureLoad(atmosphereScatteringTexture, pixel, 0).rgb,
+    vec3<f32>(0.0)
+  );
+  let transmittance = clamp(
+    textureLoad(atmosphereTransmittanceTexture, pixel, 0).rgb,
+    vec3<f32>(0.0),
+    vec3<f32>(1.0)
+  );
+  let linear = scattering + transmittance * bodyLinear;
   let mapped = vec3<f32>(1.0) - exp(-linear * display.exposure);
   let srgbApprox = pow(mapped, vec3<f32>(1.0 / 2.2));
   return vec4<f32>(srgbApprox, 1.0);
@@ -398,6 +420,8 @@ export class WebGpuRenderer {
 
   private depthTexture: GPUTexture | null = null;
   private hdrTexture: GPUTexture | null = null;
+  private atmosphereScatteringTexture: GPUTexture | null = null;
+  private atmosphereTransmittanceTexture: GPUTexture | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -448,6 +472,8 @@ export class WebGpuRenderer {
     const indexBuffer = this.indexBuffer;
     const depthTexture = this.depthTexture;
     const hdrTexture = this.hdrTexture;
+    const atmosphereScatteringTexture = this.atmosphereScatteringTexture;
+    const atmosphereTransmittanceTexture = this.atmosphereTransmittanceTexture;
     const displayPipeline = this.displayPipeline;
     const displayBindGroup = this.displayBindGroup;
 
@@ -460,6 +486,8 @@ export class WebGpuRenderer {
       !indexBuffer ||
       !depthTexture ||
       !hdrTexture ||
+      !atmosphereScatteringTexture ||
+      !atmosphereTransmittanceTexture ||
       !displayPipeline ||
       !displayBindGroup
     ) {
@@ -537,6 +565,8 @@ export class WebGpuRenderer {
     }
 
     const hdrView = hdrTexture.createView();
+    const atmosphereScatteringView = atmosphereScatteringTexture.createView();
+    const atmosphereTransmittanceView = atmosphereTransmittanceTexture.createView();
     const depthView = depthTexture.createView();
     const encoder = device.createCommandEncoder({ label: "universe-frame" });
 
@@ -564,31 +594,41 @@ export class WebGpuRenderer {
     }
     bodyPass.end();
 
+    const atmospherePass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: atmosphereScatteringView,
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+        {
+          view: atmosphereTransmittanceView,
+          clearValue: { r: 1, g: 1, b: 1, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+      depthStencilAttachment: {
+        view: depthView,
+        depthLoadOp: "load",
+        depthStoreOp: "store",
+      },
+    });
+
     if (earth?.orientation && this.cameraIsOutsideEarthAtmosphere(earth, camera)) {
       this.writeAtmosphereUniforms(earth, sun, camera, viewProjection);
       const atmospherePipeline = this.atmospherePipeline;
       const atmosphereBindGroup = this.atmosphereBindGroup;
       if (atmospherePipeline && atmosphereBindGroup) {
-        const atmospherePass = encoder.beginRenderPass({
-          colorAttachments: [{
-            view: hdrView,
-            loadOp: "load",
-            storeOp: "store",
-          }],
-          depthStencilAttachment: {
-            view: depthView,
-            depthLoadOp: "load",
-            depthStoreOp: "store",
-          },
-        });
         atmospherePass.setPipeline(atmospherePipeline);
         atmospherePass.setBindGroup(0, atmosphereBindGroup);
         atmospherePass.setVertexBuffer(0, vertexBuffer);
         atmospherePass.setIndexBuffer(indexBuffer, "uint32");
         atmospherePass.drawIndexed(this.indexCount);
-        atmospherePass.end();
       }
     }
+    atmospherePass.end();
 
     if (this.displayBuffer) {
       device.queue.writeBuffer(this.displayBuffer, 0, new Float32Array([exposure, 0, 0, 0]));
@@ -631,6 +671,8 @@ export class WebGpuRenderer {
     window.removeEventListener("resize", this.resize);
     this.depthTexture?.destroy();
     this.hdrTexture?.destroy();
+    this.atmosphereScatteringTexture?.destroy();
+    this.atmosphereTransmittanceTexture?.destroy();
     for (const resource of this.bodyResources.values()) resource.uniformBuffer.destroy();
     this.bodySceneBuffer?.destroy();
     this.atmosphereBuffer?.destroy();
@@ -699,21 +741,10 @@ export class WebGpuRenderer {
       fragment: {
         module,
         entryPoint: "fragmentMain",
-        targets: [{
-          format: HDR_FORMAT,
-          blend: {
-            color: {
-              operation: "add",
-              srcFactor: "one",
-              dstFactor: "one-minus-src-alpha",
-            },
-            alpha: {
-              operation: "add",
-              srcFactor: "one",
-              dstFactor: "one-minus-src-alpha",
-            },
-          },
-        }],
+        targets: [
+          { format: HDR_FORMAT },
+          { format: HDR_FORMAT },
+        ],
       },
       primitive: { topology: "triangle-list", cullMode: "back", frontFace: "ccw" },
       depthStencil: {
@@ -851,7 +882,9 @@ export class WebGpuRenderer {
       this.canvas.width === width &&
       this.canvas.height === height &&
       this.depthTexture &&
-      this.hdrTexture
+      this.hdrTexture &&
+      this.atmosphereScatteringTexture &&
+      this.atmosphereTransmittanceTexture
     ) return;
 
     this.canvas.width = width;
@@ -860,6 +893,8 @@ export class WebGpuRenderer {
 
     this.depthTexture?.destroy();
     this.hdrTexture?.destroy();
+    this.atmosphereScatteringTexture?.destroy();
+    this.atmosphereTransmittanceTexture?.destroy();
 
     this.depthTexture = this.device.createTexture({
       label: "reversed-z-depth",
@@ -868,7 +903,19 @@ export class WebGpuRenderer {
       usage: GPUTextureUsage.RENDER_ATTACHMENT,
     });
     this.hdrTexture = this.device.createTexture({
-      label: "linear-hdr-scene",
+      label: "linear-hdr-body-scene",
+      size: [width, height],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.atmosphereScatteringTexture = this.device.createTexture({
+      label: "atmosphere-single-scattering",
+      size: [width, height],
+      format: HDR_FORMAT,
+      usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+    });
+    this.atmosphereTransmittanceTexture = this.device.createTexture({
+      label: "atmosphere-rgb-transmittance",
       size: [width, height],
       format: HDR_FORMAT,
       usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
@@ -881,7 +928,9 @@ export class WebGpuRenderer {
       layout: this.displayPipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: this.hdrTexture.createView() },
-        { binding: 1, resource: { buffer: this.displayBuffer } },
+        { binding: 1, resource: this.atmosphereScatteringTexture.createView() },
+        { binding: 2, resource: this.atmosphereTransmittanceTexture.createView() },
+        { binding: 3, resource: { buffer: this.displayBuffer } },
       ],
     });
   };
