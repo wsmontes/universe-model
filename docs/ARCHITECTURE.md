@@ -178,7 +178,7 @@ If a remote Earth surface asset cannot be fetched with CORS, physical geometry a
 
 ## Broadband radiometry
 
-The linear HDR scene now carries a broadband radiance scale in `W·m⁻²·sr⁻¹` rather than arbitrary brightness units.
+The linear HDR scene is physically defined in broadband radiance `W·m⁻²·sr⁻¹` rather than arbitrary brightness units. Because the render target is `rgba16float`, GPU storage uses a fixed transparent scale: **1 stored unit = 1000 W·m⁻²·sr⁻¹**. All physical calculations occur in SI-valued radiance before this final storage conversion, and the display-reference radiance is converted by the same factor.
 
 The pinned solar reference is:
 
@@ -224,3 +224,14 @@ display_linear = 1 - exp(-scene_radiance / reference_radiance)
 followed by the existing approximate sRGB display encoding.
 
 This is not yet a calibrated camera model. It is an explicit observer transform replacing the previous arbitrary dimensionless exposure multiplier.
+
+
+### HDR numeric range
+
+The uniform solar disk implied by 1361 W/m², the exact au, and the pck00011 solar radius is roughly 20 MW·m⁻²·sr⁻¹. That exceeds the finite range of binary16. The renderer therefore stores:
+
+```text
+stored_radiance = radiance_W_m2_sr / 1000
+```
+
+so the solar disk is ~20,032 stored units, below the `rgba16float` maximum 65,504. A 100 W·m⁻²·sr⁻¹ display reference becomes 0.1 stored units. This scale is a numeric representation detail only; it is not an exposure adjustment and does not alter the physical scene.

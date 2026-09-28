@@ -11,8 +11,11 @@ import { EARTH_REFERENCE_ATMOSPHERE } from "../.test-dist/src/render/AtmosphereM
 import { earthBmngAssetForUtc } from "../.test-dist/src/render/SurfaceTextureManifest.js";
 import {
   DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
+  HDR_RADIANCE_W_M2_SR_PER_STORAGE_UNIT,
+  HDR_STORAGE_UNITS_PER_W_M2_SR,
   REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
   lambertianRadianceWm2Sr,
+  radianceWm2SrToHdrStorage,
   solarIrradianceAtDistanceWm2,
   uniformSolarDiskRadianceWm2Sr,
 } from "../.test-dist/src/render/Radiometry.js";
@@ -248,4 +251,21 @@ test("broadband solar radiometry is physically scaled at 1 au", () => {
   const solarDiskRadiance = uniformSolarDiskRadianceWm2Sr();
   assert.ok(Number.isFinite(solarDiskRadiance));
   assert.ok(solarDiskRadiance > 1e7);
+});
+
+
+test("half-float HDR storage scale preserves solar radiance range", () => {
+  assert.equal(HDR_RADIANCE_W_M2_SR_PER_STORAGE_UNIT, 1000);
+  assert.equal(HDR_STORAGE_UNITS_PER_W_M2_SR, 0.001);
+
+  const storedSolar = radianceWm2SrToHdrStorage(
+    uniformSolarDiskRadianceWm2Sr(),
+  );
+  assert.ok(storedSolar > 10_000);
+  assert.ok(storedSolar < 65_504);
+
+  const storedReference = radianceWm2SrToHdrStorage(
+    DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
+  );
+  assert.equal(storedReference, 0.1);
 });

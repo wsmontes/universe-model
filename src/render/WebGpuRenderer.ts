@@ -14,6 +14,7 @@ import { cameraRotation, multiplyMat4, reversedInfinitePerspective } from "./mat
 import { createUnitSphereMesh } from "./sphereMesh.js";
 import {
   DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
+  HDR_STORAGE_UNITS_PER_W_M2_SR,
   REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
   uniformSolarDiskRadianceWm2Sr,
 } from "./Radiometry.js";
@@ -140,9 +141,9 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let emissive = body.colorEmissive.w > 0.5;
   if (emissive) {
     return vec4<f32>(
-      scene.radiometry.y,
-      scene.radiometry.y,
-      scene.radiometry.y,
+      scene.radiometry.y * scene.radiometry.w,
+      scene.radiometry.y * scene.radiometry.w,
+      scene.radiometry.y * scene.radiometry.w,
       1.0
     );
   }
@@ -178,7 +179,8 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     cosine *
     solarIrradianceWm2 *
     visibleSolarDisk /
-    3.141592653589793;
+    3.141592653589793 *
+    scene.radiometry.w;
   return vec4<f32>(reflected, 1.0);
 }
 `;
@@ -196,6 +198,7 @@ struct AtmosphereUniforms {
   rotationColumn0: vec4<f32>,
   rotationColumn1: vec4<f32>,
   rotationColumn2: vec4<f32>,
+  storageScalePadding: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> atmosphere: AtmosphereUniforms;
@@ -395,7 +398,10 @@ fn fragmentMain(input: VertexOutput) -> AtmosphereOutput {
   );
 
   var output: AtmosphereOutput;
-  output.scattering = vec4<f32>(scattering, 1.0);
+  output.scattering = vec4<f32>(
+    scattering * atmosphere.storageScalePadding.x,
+    1.0
+  );
   output.transmittance = vec4<f32>(viewTransmittance, 1.0);
   return output;
 }
@@ -610,7 +616,7 @@ export class WebGpuRenderer {
       REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
       uniformSolarDiskRadianceWm2Sr(),
       AU_METERS,
-      0,
+      HDR_STORAGE_UNITS_PER_W_M2_SR,
     ], 20);
     device.queue.writeBuffer(bodySceneBuffer, 0, bodySceneData);
 
@@ -757,7 +763,12 @@ export class WebGpuRenderer {
       device.queue.writeBuffer(
         this.displayBuffer,
         0,
-        new Float32Array([displayReference, 0, 0, 0]),
+        new Float32Array([
+          displayReference * HDR_STORAGE_UNITS_PER_W_M2_SR,
+          0,
+          0,
+          0,
+        ]),
       );
     }
 
@@ -885,7 +896,7 @@ export class WebGpuRenderer {
 
     this.atmosphereBuffer = device.createBuffer({
       label: "earth-atmosphere-uniforms",
-      size: 224,
+      size: 240,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.atmosphereBindGroup = device.createBindGroup({
@@ -932,7 +943,7 @@ export class WebGpuRenderer {
     const m = earth.orientation.bodyFixedToJ2000;
     const inner = bodyModel(399).radiiMeters;
 
-    const data = new Float32Array(56);
+    const data = new Float32Array(60);
     data.set(viewProjection, 0);
     data.set([earthLocal.x, earthLocal.y, earthLocal.z, 0], 16);
     data.set([inner[0], inner[1], inner[2], model.topAltitudeMeters], 20);
@@ -969,6 +980,7 @@ export class WebGpuRenderer {
     data.set([m[0], m[3], m[6], 0], 44);
     data.set([m[1], m[4], m[7], 0], 48);
     data.set([m[2], m[5], m[8], 0], 52);
+    data.set([HDR_STORAGE_UNITS_PER_W_M2_SR, 0, 0, 0], 56);
 
     device.queue.writeBuffer(buffer, 0, data);
   }

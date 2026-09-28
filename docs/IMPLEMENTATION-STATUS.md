@@ -21,6 +21,7 @@
 - oblate Earth ellipsoid rendering with ellipsoid normals;
 - linear HDR intermediate render target with a single final display transform;
 - broadband radiometric scene scale in W·m⁻²·sr⁻¹;
+- fixed 1000 W·m⁻²·sr⁻¹ per-unit HDR storage scale to keep solar radiance inside rgba16float without changing scene physics;
 - pinned NASA-reference total solar irradiance of 1361 W/m² at exactly 1 au;
 - uniform solar-disk radiance derived from TSI, physical Sun radius, and exact au;
 - Lambertian reflected radiance with the required 1/π factor;
