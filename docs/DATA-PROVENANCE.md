@@ -115,3 +115,22 @@ R = [ANGLE_3]3 [ANGLE_2]1 [ANGLE_1]3
 ```
 
 The derivatives follow the same mapping, with the DEC derivative changing sign.
+
+
+## Reference atmosphere model
+
+The current atmosphere is a model, not a measured instantaneous atmospheric state.
+
+Geometry:
+- Earth shape: the pinned `pck00011.tpc` ellipsoid.
+- Top altitude: 100 km above each reference-ellipsoid radius.
+- NASA describes ~100 km as the conventional atmosphere/space boundary and gives an Earth atmospheric scale height of about 8.5 km.
+
+Radiative-transfer milestone:
+- exponential Rayleigh scale height: 8.5 km;
+- exponential reference Mie/aerosol scale height: 1.2 km;
+- RGB Rayleigh scattering coefficients are declared in `AtmosphereModel.ts`;
+- Mie scattering/extinction coefficients and anisotropy are declared in the same file;
+- integration is single-scattering only.
+
+The model intentionally contains no fabricated weather, cloud, ozone, aerosol map, or humidity field. Those may only be added from separately identified datasets or explicitly declared physical models.

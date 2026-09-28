@@ -7,6 +7,7 @@ import { SpkKernel } from "../.test-dist/src/astronomy/spk/SpkKernel.js";
 import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronomy/time/LeapSecondKernel.js";
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
+import { EARTH_REFERENCE_ATMOSPHERE } from "../.test-dist/src/render/AtmosphereModel.js";
 import { BinaryPck } from "../.test-dist/src/astronomy/pck/BinaryPck.js";
 import {
   J2000_OBLIQUITY_RADIANS,
@@ -195,4 +196,17 @@ test("J2000 to ECLIPJ2000 uses the NAIF mean obliquity convention", () => {
   assert.ok(Math.abs(yAxis.x) < 1e-15);
   assert.ok(Math.abs(yAxis.y - Math.cos(J2000_OBLIQUITY_RADIANS)) < 1e-15);
   assert.ok(Math.abs(yAxis.z + Math.sin(J2000_OBLIQUITY_RADIANS)) < 1e-15);
+});
+
+
+test("Earth reference atmosphere preserves physical 100 km shell geometry", () => {
+  const model = EARTH_REFERENCE_ATMOSPHERE;
+  assert.equal(model.topAltitudeMeters, 100_000);
+  assert.equal(model.rayleighScaleHeightMeters, 8_500);
+  assert.equal(model.outerRadiiMeters[0] - 6_378_136.6, 100_000);
+  assert.equal(model.outerRadiiMeters[1] - 6_378_136.6, 100_000);
+  assert.equal(model.outerRadiiMeters[2] - 6_356_751.9, 100_000);
+  for (const coefficient of model.rayleighScatteringPerMeterRgb) {
+    assert.ok(Number.isFinite(coefficient) && coefficient > 0);
+  }
 });

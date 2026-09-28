@@ -134,3 +134,20 @@ The lunar orientation path is checked against a numerical example published in t
 
 The runtime allows a deliberately loose cross-ephemeris tolerance of 100 km because DE442s is the preferred planetary SPK while the published example was generated with DE440. The tolerance is meant to detect incorrect axes, signs, multiplication order, or frame direction; it is not presented as a precision benchmark.
 
+
+
+## Linear HDR and reference atmosphere
+
+Bodies and atmosphere are composed in a linear `rgba16float` render target. The radiance-like scene values are transformed to the display only once, in the final full-screen pass. This avoids combining already-tonemapped body colors with atmospheric scattering.
+
+The first Earth atmosphere is a declared reference model rather than a live weather product:
+
+- the atmosphere follows the authoritative Earth ellipsoid with a 100 km physical top altitude;
+- molecular density uses an exponential 8.5 km scale height, consistent with the NASA Earth Fact Sheet reference scale height;
+- aerosol/Mie density uses a separately declared 1.2 km reference scale height;
+- Rayleigh and Mie single scattering are integrated along the camera ray;
+- sunlight optical depth is integrated from every camera-ray sample toward the physical Sun direction;
+- the solid Earth blocks sunlight and the existing depth buffer prevents atmosphere behind closer geometry from being composited;
+- no atmosphere thickness exaggeration, ambient fill, or artistic rim term is used.
+
+This milestone is **single scattering**. Multiple scattering, ozone absorption, altitude-dependent composition, spatially varying aerosol/humidity fields, clouds, and a spectral solar radiance calibration remain separate scientific layers. The current display exposure is still a declared observer/display response rather than a calibrated camera.
