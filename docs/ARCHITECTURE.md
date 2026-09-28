@@ -95,3 +95,16 @@ The first Earth and Moon visual models are deliberately orientation-independent 
 ## Next architectural boundary
 
 Body-fixed orientation will be a separate frame service driven by authoritative PCK/FK/Earth-orientation data. Rendering code will not infer or approximate body orientation.
+
+## Temporal playback
+
+Playback is derived from an absolute simulation clock. Browser monotonic time is mapped to a UTC epoch at the selected rate; the astronomy worker then reconstructs state from the SPK for that epoch. No orbital state is integrated from the previous rendered frame.
+
+Ephemeris refreshes are rate-limited so asynchronous worker requests cannot accumulate. Camera tracking updates the camera target to follow a selected body or the Earth-Moon midpoint without changing astronomical coordinates.
+
+## Finite-Sun eclipses
+
+The Sun is not treated as a point shadow source. Earth and Moon shadows use the finite solar angular radius at each rendered surface point. The shader computes apparent Sun/occluder disk overlap, so total umbra, partial penumbra, and annular visibility arise continuously from geometry.
+
+This is separate from the surface material model and requires no eclipse-specific event scripting.
+

@@ -6,6 +6,7 @@ import { evaluateChebyshevWithDerivative } from "../.test-dist/src/astronomy/spk
 import { SpkKernel } from "../.test-dist/src/astronomy/spk/SpkKernel.js";
 import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronomy/time/LeapSecondKernel.js";
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
+import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 
 function encode(text) {
   return new TextEncoder().encode(text);
@@ -40,6 +41,14 @@ test("NAIF leap-second data drives UTC to ET conversion", async () => {
   const modern = converter.fromUtc("2026-09-27T00:00:00Z");
   assert.equal(modern.taiMinusUtcSeconds, 37);
   assert.ok(Math.abs(modern.tdbMinusTtSeconds) < 0.002);
+});
+
+test("finite-disk eclipse visibility handles umbra, penumbra and no overlap", () => {
+  assert.equal(circleVisibleFraction(0.01, 0.02, 0), 0);
+  assert.equal(circleVisibleFraction(0.01, 0.005, 0), 0.75);
+  assert.equal(circleVisibleFraction(0.01, 0.005, 0.02), 1);
+  const partial = circleVisibleFraction(0.01, 0.01, 0.01);
+  assert.ok(partial > 0 && partial < 1);
 });
 
 function writeAscii(view, offset, text, length) {

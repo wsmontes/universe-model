@@ -9,6 +9,9 @@
 - reversed-Z infinite projection;
 - physical Sun/Earth/Moon radii;
 - no ambient light;
+- finite-Sun eclipse shadow model with umbra/penumbra from angular disk overlap;
+- absolute-epoch temporal playback, including reverse time and accelerated rates;
+- camera target following that does not move astronomical bodies;
 - NAIF LSK parsing;
 - UTC -> TAI -> TT -> ET/TDB conversion for ordinary UTC labels;
 - DAF file/summary parsing;
@@ -22,6 +25,23 @@
 - runtime provenance display;
 - physical camera framing without changing world geometry.
 
+## Temporal model
+
+Playback never integrates orbital state from the previous frame. A simulation clock maps monotonic browser time to a new absolute UTC epoch. Each astronomy refresh reconstructs Sun/Earth/Moon state from the JPL SPK at that epoch.
+
+The UI currently supports paused, real-time, accelerated forward time, and reverse time. Ephemeris requests are bounded to approximately 30 Hz so requests do not accumulate on the worker.
+
+## Eclipse model
+
+Earth and Moon can occult the finite solar disk. Per-fragment illumination computes:
+
+1. apparent angular radius of the Sun;
+2. apparent angular radius of the relevant occluder;
+3. angular center separation;
+4. exact overlap area of the two apparent disks.
+
+This produces full illumination, partial penumbra, annular visibility, or total umbra from geometry. The model intentionally does not use a point-light shadow map.
+
 ## Local automated tests
 
 The current test suite covers:
@@ -29,7 +49,8 @@ The current test suite covers:
 1. MD5 standard vectors;
 2. Chebyshev value and analytic derivative;
 3. leap-second step and UTC -> ET sanity checks;
-4. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction.
+4. finite-disk overlap cases for umbra, penumbra and no eclipse;
+5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction.
 
 ## Not yet claimed
 
@@ -42,8 +63,9 @@ The following are deliberately not presented as solved:
 - DEM/terrain;
 - geographic/albedo textures;
 - atmosphere or ocean BRDF;
+- physically calibrated solar radiometry and camera response;
 - light-time/aberration observed mode;
 - Gaia star catalogue;
 - empirical comparison against a real DE442s kernel in this repository's automated test environment.
 
-The browser runtime is designed to load a real kernel and expose its verified MD5. A reference-vector validation suite against SPICE/Horizons is the next scientific gate.
+The browser runtime is designed to load a real kernel and expose its verified MD5. A reference-vector validation suite against SPICE/Horizons remains the next scientific gate.

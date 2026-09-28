@@ -38,6 +38,25 @@
           <button id="now" type="button">Now</button>
         </div>
 
+        <div class="time-controls">
+          <button id="play-toggle" type="button">Play</button>
+          <label class="speed-field">
+            <span>Time rate</span>
+            <select id="time-rate">
+              <option value="-86400">−1 day/s</option>
+              <option value="-3600">−1 hour/s</option>
+              <option value="-60">−1 min/s</option>
+              <option value="-1">−1×</option>
+              <option value="0" selected>Paused</option>
+              <option value="1">1×</option>
+              <option value="60">1 min/s</option>
+              <option value="3600">1 hour/s</option>
+              <option value="86400">1 day/s</option>
+              <option value="604800">1 week/s</option>
+            </select>
+          </label>
+        </div>
+
         <details>
           <summary>Kernel / provenance</summary>
           <dl class="status-grid">
@@ -61,7 +80,7 @@
         <div><span>Target</span><strong id="target-name">Earth</strong></div>
         <div><span>Distance from SSB</span><strong id="target-distance">—</strong></div>
         <div><span>Camera distance</span><strong id="camera-distance">—</strong></div>
-        <div><span>Surface model</span><strong id="surface-model">ellipsoid / uniform reflectance</strong></div>
+        <div><span>Surface model</span><strong id="surface-model">sphere / uniform reflectance</strong></div>
       </section>
     </main>
     <script type="module" src="./assets/main.js"></script>

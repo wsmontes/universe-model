@@ -23,6 +23,7 @@
 - [x] Web Worker execution
 - [x] kernel byte-length + official MD5 validation
 - [x] provenance surfaced at runtime
+- [x] absolute-epoch forward/reverse temporal playback
 - [ ] real-kernel golden-vector verification against SPICE/Horizons
 - [ ] literal UTC leap-second (`:60`) input
 
@@ -34,8 +35,8 @@
 - [x] no ambient light
 - [x] inverse-square solar illumination
 - [x] physically correct angular size from geometry
-- [x] physical camera framing / navigation
-- [ ] finite-Sun penumbra/umbra model
+- [x] physical camera framing / target following
+- [x] finite-Sun penumbra/umbra model
 - [ ] validated solar radiometry / exposure calibration
 
 ## M3 — Authoritative orientation and surface reality

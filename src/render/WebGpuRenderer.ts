@@ -1,4 +1,3 @@
-import type { Vec3d } from "../core/Vec3d.js";
 import { subtract } from "../core/Vec3d.js";
 import type { CelestialState } from "../astronomy/types.js";
 import type { CameraState } from "./OrbitCamera.js";
@@ -9,13 +8,15 @@ import { createUnitSphereMesh } from "./sphereMesh.js";
 const SHADER = /* wgsl */ `
 struct SceneUniforms {
   viewProjection: mat4x4<f32>,
-  sunPositionExposure: vec4<f32>,
+  sunPositionRadius: vec4<f32>,
+  exposurePadding: vec4<f32>,
 }
 
 struct BodyUniforms {
   centerRadius: vec4<f32>,
   colorReflectance: vec4<f32>,
   flags: vec4<f32>,
+  occluderCenterRadius: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> scene: SceneUniforms;
@@ -42,21 +43,82 @@ fn displayResponse(linearValue: vec3<f32>, exposure: f32) -> vec3<f32> {
   return pow(mapped, vec3<f32>(1.0 / 2.2));
 }
 
+fn solarVisibility(worldPosition: vec3<f32>) -> f32 {
+  let occluderRadius = body.occluderCenterRadius.w;
+  if (occluderRadius <= 0.0) {
+    return 1.0;
+  }
+
+  let toSun = scene.sunPositionRadius.xyz - worldPosition;
+  let toOccluder = body.occluderCenterRadius.xyz - worldPosition;
+  let sunDistance = length(toSun);
+  let occluderDistance = length(toOccluder);
+
+  if (sunDistance <= scene.sunPositionRadius.w || occluderDistance <= occluderRadius) {
+    return 1.0;
+  }
+
+  if (occluderDistance >= sunDistance) {
+    return 1.0;
+  }
+
+  let sunAngularRadius = asin(clamp(scene.sunPositionRadius.w / sunDistance, 0.0, 1.0));
+  let occluderAngularRadius = asin(clamp(occluderRadius / occluderDistance, 0.0, 1.0));
+  let separation = acos(clamp(dot(normalize(toSun), normalize(toOccluder)), -1.0, 1.0));
+
+  if (separation >= sunAngularRadius + occluderAngularRadius) {
+    return 1.0;
+  }
+
+  let radiusDifference = abs(occluderAngularRadius - sunAngularRadius);
+  if (separation <= radiusDifference) {
+    if (occluderAngularRadius >= sunAngularRadius) {
+      return 0.0;
+    }
+    let covered = (occluderAngularRadius * occluderAngularRadius) /
+      (sunAngularRadius * sunAngularRadius);
+    return clamp(1.0 - covered, 0.0, 1.0);
+  }
+
+  let d = max(separation, 1e-12);
+  let r1 = sunAngularRadius;
+  let r2 = occluderAngularRadius;
+  let cosine1 = clamp((d * d + r1 * r1 - r2 * r2) / (2.0 * d * r1), -1.0, 1.0);
+  let cosine2 = clamp((d * d + r2 * r2 - r1 * r1) / (2.0 * d * r2), -1.0, 1.0);
+  let radical = max(
+    0.0,
+    (-d + r1 + r2) *
+      (d + r1 - r2) *
+      (d - r1 + r2) *
+      (d + r1 + r2)
+  );
+  let overlap =
+    r1 * r1 * acos(cosine1) +
+    r2 * r2 * acos(cosine2) -
+    0.5 * sqrt(radical);
+  let sourceArea = 3.141592653589793 * r1 * r1;
+  return clamp(1.0 - overlap / sourceArea, 0.0, 1.0);
+}
+
 @fragment
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let emissive = body.flags.x > 0.5;
+  let exposure = scene.exposurePadding.x;
   if (emissive) {
-    return vec4<f32>(displayResponse(vec3<f32>(20.0), scene.sunPositionExposure.w), 1.0);
+    return vec4<f32>(displayResponse(vec3<f32>(20.0), exposure), 1.0);
   }
 
-  let toSun = scene.sunPositionExposure.xyz - input.worldPosition;
+  let toSun = scene.sunPositionRadius.xyz - input.worldPosition;
   let distanceToSun = max(length(toSun), 1.0);
   let sunDirection = toSun / distanceToSun;
   let cosine = max(dot(normalize(input.normal), sunDirection), 0.0);
   let astronomicalUnitMeters = 149597870700.0;
-  let irradianceRelativeToEarth = (astronomicalUnitMeters / distanceToSun) * (astronomicalUnitMeters / distanceToSun);
-  let reflected = body.colorReflectance.rgb * body.colorReflectance.a * cosine * irradianceRelativeToEarth;
-  return vec4<f32>(displayResponse(reflected, scene.sunPositionExposure.w), 1.0);
+  let irradianceRelativeToEarth = (astronomicalUnitMeters / distanceToSun) *
+    (astronomicalUnitMeters / distanceToSun);
+  let visibleSolarDisk = solarVisibility(input.worldPosition);
+  let reflected = body.colorReflectance.rgb * body.colorReflectance.a *
+    cosine * irradianceRelativeToEarth * visibleSolarDisk;
+  return vec4<f32>(displayResponse(reflected, exposure), 1.0);
 }
 `;
 
@@ -120,7 +182,7 @@ export class WebGpuRenderer {
 
     this.sceneBuffer = this.device.createBuffer({
       label: "scene-uniforms",
-      size: 80,
+      size: 96,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.sceneBindGroup = this.device.createBindGroup({
@@ -170,19 +232,23 @@ export class WebGpuRenderer {
     const viewProjection = multiplyMat4(projection, rotation);
 
     const sun = states.find((state) => state.bodyId === 10);
+    const earth = states.find((state) => state.bodyId === 399);
+    const moon = states.find((state) => state.bodyId === 301);
     if (!sun) throw new Error("Sun state is required for physical illumination.");
-    const sunLocal = subtract(sun.positionMeters, camera.positionMeters);
 
-    const sceneData = new Float32Array(20);
+    const sunLocal = subtract(sun.positionMeters, camera.positionMeters);
+    const sunRadius = bodyModel(10).radiusMeters;
+    const sceneData = new Float32Array(24);
     sceneData.set(viewProjection, 0);
-    sceneData.set([sunLocal.x, sunLocal.y, sunLocal.z, exposure], 16);
+    sceneData.set([sunLocal.x, sunLocal.y, sunLocal.z, sunRadius], 16);
+    sceneData.set([exposure, 0, 0, 0], 20);
     device.queue.writeBuffer(sceneBuffer, 0, sceneData);
 
     for (const state of states) {
       const resource = this.bodyResource(state.bodyId);
       const model = bodyModel(state.bodyId);
       const local = subtract(state.positionMeters, camera.positionMeters);
-      const bodyData = new Float32Array(12);
+      const bodyData = new Float32Array(16);
       bodyData.set([local.x, local.y, local.z, model.radiusMeters], 0);
       bodyData.set([
         model.baseReflectanceRgb[0],
@@ -191,6 +257,20 @@ export class WebGpuRenderer {
         model.diffuseReflectance,
       ], 4);
       bodyData.set([model.emissive ? 1 : 0, 0, 0, 0], 8);
+
+      const occluder = state.bodyId === 399 ? moon : state.bodyId === 301 ? earth : undefined;
+      if (occluder) {
+        const occluderLocal = subtract(occluder.positionMeters, camera.positionMeters);
+        bodyData.set([
+          occluderLocal.x,
+          occluderLocal.y,
+          occluderLocal.z,
+          bodyModel(occluder.bodyId).radiusMeters,
+        ], 12);
+      } else {
+        bodyData.set([0, 0, 0, 0], 12);
+      }
+
       device.queue.writeBuffer(resource.uniformBuffer, 0, bodyData);
     }
 
@@ -257,7 +337,7 @@ export class WebGpuRenderer {
     if (!pipeline) throw new Error("GPU pipeline is not initialized.");
     const uniformBuffer = device.createBuffer({
       label: `body-${bodyId}-uniforms`,
-      size: 48,
+      size: 64,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     const bindGroup = device.createBindGroup({

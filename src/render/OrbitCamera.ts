@@ -40,6 +40,10 @@ export class OrbitCamera {
     this.onChange?.();
   }
 
+  follow(targetMeters: Vec3d): void {
+    this.target = targetMeters;
+  }
+
   state(): CameraState {
     const cosPitch = Math.cos(this.pitch);
     const direction: Vec3d = {

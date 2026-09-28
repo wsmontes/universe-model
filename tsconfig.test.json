@@ -17,6 +17,7 @@
     "src/core/**/*.ts",
     "src/astronomy/time/**/*.ts",
     "src/astronomy/spk/**/*.ts",
-    "src/data/md5.ts"
+    "src/data/md5.ts",
+    "src/render/eclipse.ts"
   ]
 }

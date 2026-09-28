@@ -44,6 +44,14 @@ export class App {
   private frameSelection: FrameSelection = NAIF.EARTH;
   private leapSecondKernelText = "";
 
+  private simulationRate = 0;
+  private lastNonZeroRate = 3600;
+  private simulationAnchorUtcMs = Date.now();
+  private simulationAnchorRealMs = performance.now();
+  private animationHandle: number | null = null;
+  private lastEphemerisRequestRealMs = 0;
+  private tickInFlight = false;
+
   private readonly epochInput = element<HTMLInputElement>("#epoch-input");
   private readonly gpuStatus = element<HTMLElement>("#gpu-status");
   private readonly astronomyStatus = element<HTMLElement>("#astronomy-status");
@@ -57,9 +65,12 @@ export class App {
   private readonly cameraDistance = element<HTMLElement>("#camera-distance");
   private readonly surfaceModel = element<HTMLElement>("#surface-model");
   private readonly kernelFile = element<HTMLInputElement>("#kernel-file");
+  private readonly playToggle = element<HTMLButtonElement>("#play-toggle");
+  private readonly timeRate = element<HTMLSelectElement>("#time-rate");
 
   async start(): Promise<void> {
     this.epochInput.value = currentUtcIso();
+    this.resetSimulationClock(this.epochInput.value);
     this.bindUi();
     this.camera.setChangeHandler(() => this.render());
 
@@ -78,6 +89,7 @@ export class App {
       await this.initializeProvider(loaded);
       await this.refreshAstronomy(true);
       this.runtimeBadge.textContent = "physical state live";
+      this.startAnimationLoop();
     } catch (error) {
       this.runtimeBadge.textContent = "kernel required";
       this.astronomyStatus.textContent = "not loaded";
@@ -86,10 +98,21 @@ export class App {
   }
 
   private bindUi(): void {
-    element<HTMLButtonElement>("#apply-epoch").addEventListener("click", () => void this.refreshAstronomy(false));
+    element<HTMLButtonElement>("#apply-epoch").addEventListener("click", () => {
+      this.setSimulationRate(0);
+      void this.refreshAstronomy(false);
+    });
     element<HTMLButtonElement>("#now").addEventListener("click", () => {
+      this.setSimulationRate(0);
       this.epochInput.value = currentUtcIso();
       void this.refreshAstronomy(false);
+    });
+
+    this.playToggle.addEventListener("click", () => {
+      this.setSimulationRate(this.simulationRate === 0 ? this.lastNonZeroRate : 0);
+    });
+    this.timeRate.addEventListener("change", () => {
+      this.setSimulationRate(Number(this.timeRate.value));
     });
 
     for (const button of document.querySelectorAll<HTMLButtonElement>("[data-frame]")) {
@@ -145,6 +168,7 @@ export class App {
       await this.initializeProvider(loaded);
       await this.refreshAstronomy(true);
       this.runtimeBadge.textContent = "physical state live";
+      this.startAnimationLoop();
     } catch (error) {
       this.message.textContent = this.errorMessage(error);
     }
@@ -166,24 +190,95 @@ export class App {
     this.integrityStatus.textContent = `MD5 verified ${loaded.md5}`;
   }
 
-  private async refreshAstronomy(reframe: boolean): Promise<void> {
+  private async refreshAstronomy(
+    reframe: boolean,
+    isoUtc = this.epochInput.value.trim(),
+    quiet = false,
+    resetClock = true,
+  ): Promise<void> {
     const provider = this.provider;
     if (!provider) return;
-    this.message.textContent = "Computing geometric J2000/SSB states…";
+    if (!quiet) this.message.textContent = "Computing geometric J2000/SSB states…";
     try {
-      this.states = await provider.statesAt(ASTRONOMICAL_BODIES, { isoUtc: this.epochInput.value.trim() });
+      this.states = await provider.statesAt(ASTRONOMICAL_BODIES, { isoUtc });
       const first = this.states[0];
       if (first) {
         this.epochInput.value = first.epochUtc.replace(/\.000Z$/, "Z");
-        this.timeStatus.textContent = `ET ${first.etSecondsPastJ2000.toFixed(3)} s past J2000 (TDB)`;
+        this.timeStatus.textContent = `ET ${first.etSecondsPastJ2000.toFixed(3)} s past J2000 (TDB) · rate ${this.formatRate()}`;
+        if (resetClock) this.resetSimulationClock(first.epochUtc);
       }
+
       if (reframe) this.frameCamera();
+      else this.followCameraTarget();
       this.render();
       this.updateReadout();
-      this.message.textContent = "Geometric state reconstructed from the JPL kernel. Drag to orbit; wheel to change camera distance.";
+      if (!quiet) {
+        this.message.textContent = "Geometric state reconstructed from the JPL kernel. Drag to orbit; wheel to change camera distance.";
+      }
     } catch (error) {
+      this.setSimulationRate(0);
       this.message.textContent = this.errorMessage(error);
     }
+  }
+
+  private startAnimationLoop(): void {
+    if (this.animationHandle !== null) return;
+    this.animationHandle = requestAnimationFrame(this.animationStep);
+  }
+
+  private readonly animationStep = (now: number): void => {
+    this.animationHandle = requestAnimationFrame(this.animationStep);
+    if (this.simulationRate === 0 || !this.provider || this.tickInFlight) return;
+    if (now - this.lastEphemerisRequestRealMs < 33) return;
+
+    const utcMs = this.simulationUtcMs(now);
+    if (!Number.isFinite(utcMs)) {
+      this.setSimulationRate(0);
+      return;
+    }
+
+    this.lastEphemerisRequestRealMs = now;
+    this.tickInFlight = true;
+    const iso = new Date(utcMs).toISOString();
+    void this.refreshAstronomy(false, iso, true, false).finally(() => {
+      this.tickInFlight = false;
+    });
+  };
+
+  private simulationUtcMs(realNow = performance.now()): number {
+    return this.simulationAnchorUtcMs +
+      (realNow - this.simulationAnchorRealMs) * this.simulationRate;
+  }
+
+  private resetSimulationClock(isoUtc: string): void {
+    const parsed = Date.parse(isoUtc);
+    if (!Number.isFinite(parsed)) throw new Error(`Cannot anchor simulation clock to invalid UTC epoch: ${isoUtc}`);
+    this.simulationAnchorUtcMs = parsed;
+    this.simulationAnchorRealMs = performance.now();
+  }
+
+  private setSimulationRate(rate: number): void {
+    if (!Number.isFinite(rate)) return;
+    const now = performance.now();
+    const currentUtcMs = this.simulationUtcMs(now);
+    this.simulationAnchorUtcMs = currentUtcMs;
+    this.simulationAnchorRealMs = now;
+    this.simulationRate = rate;
+    if (rate !== 0) this.lastNonZeroRate = rate;
+    this.timeRate.value = String(rate);
+    this.playToggle.textContent = rate === 0 ? "Play" : "Pause";
+    this.updateTimeStatusRate();
+  }
+
+  private updateTimeStatusRate(): void {
+    const existing = this.timeStatus.textContent ?? "";
+    const base = existing.split(" · rate ")[0] ?? existing;
+    this.timeStatus.textContent = `${base} · rate ${this.formatRate()}`;
+  }
+
+  private formatRate(): string {
+    if (this.simulationRate === 0) return "paused";
+    return `${this.simulationRate.toLocaleString()}×`;
   }
 
   private frameCamera(): void {
@@ -205,6 +300,18 @@ export class App {
     const state = this.state(this.frameSelection);
     const model = bodyModel(this.frameSelection);
     this.camera.frame(state.positionMeters, model.radiusMeters * 3.2);
+  }
+
+  private followCameraTarget(): void {
+    if (this.states.length === 0) return;
+    if (this.frameSelection === "system") {
+      this.camera.follow(midpoint(
+        this.state(NAIF.EARTH).positionMeters,
+        this.state(NAIF.MOON).positionMeters,
+      ));
+      return;
+    }
+    this.camera.follow(this.state(this.frameSelection).positionMeters);
   }
 
   private render(): void {
