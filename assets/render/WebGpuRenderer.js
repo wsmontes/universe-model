@@ -1,4 +1,5 @@
 import { subtract } from "../core/Vec3d.js";
+import { AU_METERS } from "../core/units.js";
 import { transformMatrix3Vector } from "../astronomy/frames/Matrix3.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "./AtmosphereModel.js";
 import { bodyModel } from "./BodyModels.js";
@@ -6,6 +7,11 @@ import { SurfaceTextureLoader } from "./SurfaceTextureLoader.js";
 import { surfaceAssetForBody } from "./SurfaceTextureManifest.js";
 import { cameraRotation, multiplyMat4, reversedInfinitePerspective } from "./math.js";
 import { createUnitSphereMesh } from "./sphereMesh.js";
+import {
+  DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
+  REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
+  uniformSolarDiskRadianceWm2Sr,
+} from "./Radiometry.js";
 
 const HDR_FORMAT = "rgba16float";
 
@@ -13,6 +19,7 @@ const BODY_SHADER = `
 struct SceneUniforms {
   viewProjection: mat4x4<f32>,
   sunPositionRadius: vec4<f32>,
+  radiometry: vec4<f32>,
 }
 
 struct BodyUniforms {
@@ -127,16 +134,21 @@ fn surfaceUv(bodyDirection: vec3<f32>) -> vec2<f32> {
 fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
   let emissive = body.colorEmissive.w > 0.5;
   if (emissive) {
-    return vec4<f32>(20.0, 20.0, 20.0, 1.0);
+    return vec4<f32>(
+      scene.radiometry.y,
+      scene.radiometry.y,
+      scene.radiometry.y,
+      1.0
+    );
   }
 
   let toSun = scene.sunPositionRadius.xyz - input.worldPosition;
   let distanceToSun = max(length(toSun), 1.0);
   let sunDirection = toSun / distanceToSun;
   let cosine = max(dot(normalize(input.normal), sunDirection), 0.0);
-  let astronomicalUnitMeters = 149597870700.0;
-  let irradianceRelativeToEarth = (astronomicalUnitMeters / distanceToSun) *
-    (astronomicalUnitMeters / distanceToSun);
+  let distanceScale = scene.radiometry.z / distanceToSun;
+  let solarIrradianceWm2 =
+    scene.radiometry.x * distanceScale * distanceScale;
   let visibleSolarDisk = solarVisibility(input.worldPosition);
 
   let direction = normalize(input.bodyDirection);
@@ -159,8 +171,9 @@ fn fragmentMain(input: VertexOutput) -> @location(0) vec4<f32> {
     surfaceModulation *
     body.radiiReflectance.w *
     cosine *
-    irradianceRelativeToEarth *
-    visibleSolarDisk;
+    solarIrradianceWm2 *
+    visibleSolarDisk /
+    3.141592653589793;
   return vec4<f32>(reflected, 1.0);
 }
 `;
@@ -335,11 +348,10 @@ fn fragmentMain(input: VertexOutput) -> AtmosphereOutput {
   let betaMieScattering = atmosphere.mieScatteringScaleHeight.xyz;
   let betaMieExtinction = atmosphere.mieExtinctionPadding.xyz;
   let g = atmosphere.outerRadiiG.w;
-  let astronomicalUnitMeters = 149597870700.0;
   let sunDistanceMeters = max(length(sunBody), 1.0);
-  let solarIrradianceRelative =
-    (astronomicalUnitMeters / sunDistanceMeters) *
-    (astronomicalUnitMeters / sunDistanceMeters);
+  let distanceScale = atmosphere.mieExtinctionPadding.w / sunDistanceMeters;
+  let solarIrradianceWm2 =
+    atmosphere.sunPositionUnused.w * distanceScale * distanceScale;
 
   let stepLength = (endDistance - startDistance) / 16.0;
   var viewOpticalDepth = vec2<f32>(0.0);
@@ -368,7 +380,7 @@ fn fragmentMain(input: VertexOutput) -> AtmosphereOutput {
     let source =
       betaRayleigh * density.x * rayleighPhase(mu) +
       betaMieScattering * density.y * miePhase(mu, g);
-    scattering += transmittance * source * stepLength * solarIrradianceRelative;
+    scattering += transmittance * source * stepLength * solarIrradianceWm2;
   }
 
   let viewTransmittance = exp(
@@ -385,7 +397,7 @@ fn fragmentMain(input: VertexOutput) -> AtmosphereOutput {
 
 const DISPLAY_SHADER = `
 struct DisplayUniforms {
-  exposure: f32,
+  referenceRadianceWm2Sr: f32,
   padding0: f32,
   padding1: f32,
   padding2: f32,
@@ -420,7 +432,8 @@ fn fragmentMain(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32
     vec3<f32>(1.0)
   );
   let linear = scattering + transmittance * bodyLinear;
-  let mapped = vec3<f32>(1.0) - exp(-linear * display.exposure);
+  let referenceRadiance = max(display.referenceRadianceWm2Sr, 1e-6);
+  let mapped = vec3<f32>(1.0) - exp(-linear / referenceRadiance);
   let srgbApprox = pow(mapped, vec3<f32>(1.0 / 2.2));
   return vec4<f32>(srgbApprox, 1.0);
 }
@@ -526,7 +539,12 @@ export class WebGpuRenderer {
     return summaries.join(" | ");
   }
 
-  render(states, camera, exposure = 2.4) {
+  render(
+    states,
+    camera,
+    displayReferenceRadianceWm2Sr =
+      DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
+  ) {
     const device = this.requireDevice();
     this.resize();
 
@@ -574,9 +592,15 @@ export class WebGpuRenderer {
 
     const sunLocal = subtract(sun.positionMeters, camera.positionMeters);
     const sunRadius = bodyModel(10).radiusMeters;
-    const bodySceneData = new Float32Array(20);
+    const bodySceneData = new Float32Array(24);
     bodySceneData.set(viewProjection, 0);
     bodySceneData.set([sunLocal.x, sunLocal.y, sunLocal.z, sunRadius], 16);
+    bodySceneData.set([
+      REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
+      uniformSolarDiskRadianceWm2Sr(),
+      AU_METERS,
+      0,
+    ], 20);
     device.queue.writeBuffer(bodySceneBuffer, 0, bodySceneData);
 
     const renderableStates = states.filter((state) => {
@@ -715,7 +739,15 @@ export class WebGpuRenderer {
     atmospherePass.end();
 
     if (this.displayBuffer) {
-      device.queue.writeBuffer(this.displayBuffer, 0, new Float32Array([exposure, 0, 0, 0]));
+      const displayReference = Number.isFinite(displayReferenceRadianceWm2Sr) &&
+        displayReferenceRadianceWm2Sr > 0
+        ? displayReferenceRadianceWm2Sr
+        : DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR;
+      device.queue.writeBuffer(
+        this.displayBuffer,
+        0,
+        new Float32Array([displayReference, 0, 0, 0]),
+      );
     }
 
     const displayPass = encoder.beginRenderPass({
@@ -797,7 +829,7 @@ export class WebGpuRenderer {
 
     this.bodySceneBuffer = device.createBuffer({
       label: "body-scene-uniforms",
-      size: 80,
+      size: 96,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.bodySceneBindGroup = device.createBindGroup({
@@ -894,7 +926,12 @@ export class WebGpuRenderer {
       model.outerRadiiMeters[2],
       model.mieG,
     ], 24);
-    data.set([sunLocal.x, sunLocal.y, sunLocal.z, 0], 28);
+    data.set([
+      sunLocal.x,
+      sunLocal.y,
+      sunLocal.z,
+      REFERENCE_TOTAL_SOLAR_IRRADIANCE_W_M2,
+    ], 28);
     data.set([
       model.rayleighScatteringPerMeterRgb[0],
       model.rayleighScatteringPerMeterRgb[1],
@@ -911,7 +948,7 @@ export class WebGpuRenderer {
       model.mieExtinctionPerMeterRgb[0],
       model.mieExtinctionPerMeterRgb[1],
       model.mieExtinctionPerMeterRgb[2],
-      0,
+      AU_METERS,
     ], 40);
     data.set([m[0], m[3], m[6], 0], 44);
     data.set([m[1], m[4], m[7], 0], 48);

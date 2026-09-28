@@ -60,6 +60,7 @@ export class App {
   sourceStatus = element("#source-status");
   integrityStatus = element("#integrity-status");
   surfaceStatus = element("#surface-status");
+  displayReferenceRadiance = element("#display-reference-radiance");
   runtimeBadge = element("#runtime-badge");
   message = element("#message");
   targetName = element("#target-name");
@@ -116,6 +117,9 @@ export class App {
     });
     this.timeRate.addEventListener("change", () => {
       this.setSimulationRate(Number(this.timeRate.value));
+    });
+    this.displayReferenceRadiance.addEventListener("input", () => {
+      this.render();
     });
 
     for (const button of document.querySelectorAll("[data-frame]")) {
@@ -380,7 +384,11 @@ export class App {
   render() {
     if (this.states.length === 0) return;
     try {
-      this.renderer.render(this.states, this.camera.state());
+      this.renderer.render(
+        this.states,
+        this.camera.state(),
+        Number(this.displayReferenceRadiance.value),
+      );
       this.updateReadout();
     } catch (error) {
       this.gpuStatus.textContent = "render error: " + this.errorMessage(error);
