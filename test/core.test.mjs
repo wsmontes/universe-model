@@ -8,7 +8,13 @@ import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronom
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 import { BinaryPck } from "../.test-dist/src/astronomy/pck/BinaryPck.js";
-import { multiplyMatrix3, transposeMatrix3, transformMatrix3Vector } from "../.test-dist/src/astronomy/frames/Matrix3.js";
+import {
+  J2000_OBLIQUITY_RADIANS,
+  J2000_TO_ECLIPJ2000,
+  multiplyMatrix3,
+  transposeMatrix3,
+  transformMatrix3Vector,
+} from "../.test-dist/src/astronomy/frames/Matrix3.js";
 
 function encode(text) {
   return new TextEncoder().encode(text);
@@ -174,4 +180,19 @@ test("matrix-vector transform follows row-major convention", () => {
   ];
   const result = transformMatrix3Vector(matrix, { x: 2, y: 3, z: 4 });
   assert.deepEqual(result, { x: 3, y: -2, z: 4 });
+});
+
+
+test("J2000 to ECLIPJ2000 uses the NAIF mean obliquity convention", () => {
+  const expectedDegrees = 23.43929111111111;
+  const actualDegrees = J2000_OBLIQUITY_RADIANS * 180 / Math.PI;
+  assert.ok(Math.abs(actualDegrees - expectedDegrees) < 1e-12);
+
+  const yAxis = transformMatrix3Vector(
+    J2000_TO_ECLIPJ2000,
+    { x: 0, y: 1, z: 0 },
+  );
+  assert.ok(Math.abs(yAxis.x) < 1e-15);
+  assert.ok(Math.abs(yAxis.y - Math.cos(J2000_OBLIQUITY_RADIANS)) < 1e-15);
+  assert.ok(Math.abs(yAxis.z + Math.sin(J2000_OBLIQUITY_RADIANS)) < 1e-15);
 });
