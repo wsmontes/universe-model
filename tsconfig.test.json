@@ -19,6 +19,7 @@
     "src/astronomy/spk/**/*.ts",
     "src/astronomy/pck/**/*.ts",
     "src/astronomy/frames/**/*.ts",
+    "src/astronomy/observation/**/*.ts",
     "src/data/md5.ts",
     "src/render/eclipse.ts",
     "src/render/AtmosphereModel.ts",
