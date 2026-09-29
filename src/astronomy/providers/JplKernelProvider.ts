@@ -234,6 +234,37 @@ export class JplKernelProvider
     bodies: readonly CelestialBodyId[],
     epoch: Epoch,
   ): Promise<readonly CelestialState[]> {
+    return this.requestStates({
+      type: "states",
+      bodies,
+      isoUtc: epoch.isoUtc,
+    });
+  }
+
+  async statesAtEt(
+    bodies: readonly CelestialBodyId[],
+    etSecondsPastJ2000: number,
+  ): Promise<readonly CelestialState[]> {
+    return this.requestStates({
+      type: "states-et",
+      bodies,
+      etSecondsPastJ2000,
+    });
+  }
+
+  private async requestStates(
+    query:
+      | {
+          readonly type: "states";
+          readonly bodies: readonly CelestialBodyId[];
+          readonly isoUtc: string;
+        }
+      | {
+          readonly type: "states-et";
+          readonly bodies: readonly CelestialBodyId[];
+          readonly etSecondsPastJ2000: number;
+        },
+  ): Promise<readonly CelestialState[]> {
     if (!this.initialized || !this.manifest) {
       throw new Error(
         "JPL provider has not been initialized.",
@@ -241,10 +272,8 @@ export class JplKernelProvider
     }
     const requestId = this.nextRequestId++;
     const response = await this.request({
-      type: "states",
       requestId,
-      bodies,
-      isoUtc: epoch.isoUtc,
+      ...query,
     });
     const workerStates = response.states ?? [];
     const manifest = this.manifest;
@@ -307,6 +336,47 @@ export class JplKernelProvider
     epoch: Epoch,
     correction: AberrationCorrection = "CN+S",
   ): Promise<readonly ObservedCelestialState[]> {
+    return this.requestObservedStates({
+      type: "observations",
+      bodies,
+      observerBodyId,
+      isoUtc: epoch.isoUtc,
+      correction,
+    });
+  }
+
+  async observedStatesAtEt(
+    bodies: readonly CelestialBodyId[],
+    observerBodyId: CelestialBodyId,
+    etSecondsPastJ2000: number,
+    correction: AberrationCorrection = "CN+S",
+  ): Promise<readonly ObservedCelestialState[]> {
+    return this.requestObservedStates({
+      type: "observations-et",
+      bodies,
+      observerBodyId,
+      etSecondsPastJ2000,
+      correction,
+    });
+  }
+
+  private async requestObservedStates(
+    query:
+      | {
+          readonly type: "observations";
+          readonly bodies: readonly CelestialBodyId[];
+          readonly observerBodyId: CelestialBodyId;
+          readonly isoUtc: string;
+          readonly correction: AberrationCorrection;
+        }
+      | {
+          readonly type: "observations-et";
+          readonly bodies: readonly CelestialBodyId[];
+          readonly observerBodyId: CelestialBodyId;
+          readonly etSecondsPastJ2000: number;
+          readonly correction: AberrationCorrection;
+        },
+  ): Promise<readonly ObservedCelestialState[]> {
     if (!this.initialized || !this.manifest) {
       throw new Error(
         "JPL provider has not been initialized.",
@@ -315,12 +385,8 @@ export class JplKernelProvider
 
     const requestId = this.nextRequestId++;
     const response = await this.request({
-      type: "observations",
       requestId,
-      bodies,
-      observerBodyId,
-      isoUtc: epoch.isoUtc,
-      correction,
+      ...query,
     });
     const observations = response.observations ?? [];
     const manifest = this.manifest;

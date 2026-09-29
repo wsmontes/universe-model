@@ -44,6 +44,13 @@ interface StateMessage {
   readonly isoUtc: string;
 }
 
+interface StateEtMessage {
+  readonly type: "states-et";
+  readonly requestId: number;
+  readonly bodies: readonly number[];
+  readonly etSecondsPastJ2000: number;
+}
+
 interface ObservationMessage {
   readonly type: "observations";
   readonly requestId: number;
@@ -53,10 +60,21 @@ interface ObservationMessage {
   readonly correction: AberrationCorrection;
 }
 
+interface ObservationEtMessage {
+  readonly type: "observations-et";
+  readonly requestId: number;
+  readonly bodies: readonly number[];
+  readonly observerBodyId: number;
+  readonly etSecondsPastJ2000: number;
+  readonly correction: AberrationCorrection;
+}
+
 type InputMessage =
   | InitMessage
   | StateMessage
-  | ObservationMessage;
+  | StateEtMessage
+  | ObservationMessage
+  | ObservationEtMessage;
 
 interface LoadedPck {
   readonly kernel: BinaryPck;
@@ -228,9 +246,18 @@ self.addEventListener(
         );
       }
 
-      const instant = time.fromUtc(message.isoUtc);
+      const instant =
+        message.type === "states" ||
+        message.type === "observations"
+          ? time.fromUtc(message.isoUtc)
+          : time.fromEt(
+              message.etSecondsPastJ2000,
+            );
 
-      if (message.type === "observations") {
+      if (
+        message.type === "observations" ||
+        message.type === "observations-et"
+      ) {
         const observations = message.bodies.map((bodyId) => {
           const observed = observedState(
             spk!,

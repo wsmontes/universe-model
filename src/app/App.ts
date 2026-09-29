@@ -48,7 +48,7 @@ export class App {
 
   private simulationRate = 0;
   private lastNonZeroRate = 3600;
-  private simulationAnchorUtcMs = Date.now();
+  private simulationAnchorEtSeconds = 0;
   private simulationAnchorRealMs = performance.now();
   private animationHandle: number | null = null;
   private lastEphemerisRequestRealMs = 0;
@@ -85,7 +85,6 @@ export class App {
 
   async start(): Promise<void> {
     this.epochInput.value = currentUtcIso();
-    this.resetSimulationClock(this.epochInput.value);
     this.bindUi();
     this.camera.setChangeHandler(() => this.render());
 
@@ -260,7 +259,7 @@ export class App {
 
   private async refreshAstronomy(
     reframe: boolean,
-    isoUtc = this.epochInput.value.trim(),
+    epoch: string | number = this.epochInput.value.trim(),
     quiet = false,
     resetClock = true,
   ): Promise<void> {
@@ -268,14 +267,32 @@ export class App {
     if (!provider) return;
     if (!quiet) this.message.textContent = "Computing geometric J2000/SSB states…";
     try {
-      this.states = await provider.statesAt(ASTRONOMICAL_BODIES, { isoUtc });
+      this.states =
+        typeof epoch === "number"
+          ? await provider.statesAtEt(
+              ASTRONOMICAL_BODIES,
+              epoch,
+            )
+          : await provider.statesAt(
+              ASTRONOMICAL_BODIES,
+              { isoUtc: epoch },
+            );
       const first = this.states[0];
       if (first) {
         this.epochInput.value = first.epochUtc.replace(/\.000Z$/, "Z");
         this.timeStatus.textContent = `ET ${first.etSecondsPastJ2000.toFixed(3)} s past J2000 (TDB) · rate ${this.formatRate()}`;
-        if (resetClock) this.resetSimulationClock(first.epochUtc);
+        if (resetClock) {
+          this.resetSimulationClock(
+            first.etSecondsPastJ2000,
+          );
+        }
         this.prepareSurfacesForEpoch(first.epochUtc);
-        void this.refreshObservation(first.epochUtc, quiet);
+        void this.refreshObservation(
+          typeof epoch === "number"
+            ? first.etSecondsPastJ2000
+            : first.epochUtc,
+          quiet,
+        );
       }
 
       if (reframe) this.frameCamera();
@@ -292,7 +309,7 @@ export class App {
   }
 
   private async refreshObservation(
-    isoUtc: string,
+    epoch: string | number,
     quiet: boolean,
   ): Promise<void> {
     const provider = this.provider;
@@ -312,12 +329,20 @@ export class App {
     const targetBodyId = Number(this.observationTarget.value);
 
     try {
-      const observations = await provider.observedStatesAt(
-        [targetBodyId],
-        observerBodyId,
-        { isoUtc },
-        "CN+S",
-      );
+      const observations =
+        typeof epoch === "number"
+          ? await provider.observedStatesAtEt(
+              [targetBodyId],
+              observerBodyId,
+              epoch,
+              "CN+S",
+            )
+          : await provider.observedStatesAt(
+              [targetBodyId],
+              observerBodyId,
+              { isoUtc: epoch },
+              "CN+S",
+            );
       const observation = observations[0];
       if (!observation) {
         this.observationStatus.textContent = "no observation returned";
@@ -373,53 +398,54 @@ export class App {
     if (this.simulationRate === 0 || !this.provider || this.tickInFlight) return;
     if (now - this.lastEphemerisRequestRealMs < 33) return;
 
-    const utcMs = this.simulationUtcMs(now);
-    if (!Number.isFinite(utcMs)) {
+    const etSeconds = this.simulationEtSeconds(now);
+    if (!Number.isFinite(etSeconds)) {
       this.setSimulationRate(0);
       return;
     }
 
     this.lastEphemerisRequestRealMs = now;
     this.tickInFlight = true;
-    const iso = new Date(utcMs).toISOString();
-    void this.refreshAstronomy(false, iso, true, false).finally(() => {
+    void this.refreshAstronomy(
+      false,
+      etSeconds,
+      true,
+      false,
+    ).finally(() => {
       this.tickInFlight = false;
     });
   };
 
-  private simulationUtcMs(realNow = performance.now()): number {
-    return this.simulationAnchorUtcMs +
-      (realNow - this.simulationAnchorRealMs) * this.simulationRate;
+  private simulationEtSeconds(
+    realNow = performance.now(),
+  ): number {
+    return (
+      this.simulationAnchorEtSeconds +
+      ((realNow - this.simulationAnchorRealMs) / 1000) *
+        this.simulationRate
+    );
   }
 
-  private resetSimulationClock(isoUtc: string): void {
-    let parsed = Date.parse(isoUtc);
-
-    // JavaScript Date cannot represent the UTC label :60. For a paused
-    // leap-second query, map the playback anchor onto the final POSIX
-    // second before midnight. The astronomy provider retains the exact
-    // :60 label and ET; ordinary playback remains Date-based.
-    if (
-      !Number.isFinite(parsed) &&
-      /:60(?:\.\d+)?Z$/.test(isoUtc)
-    ) {
-      parsed = Date.parse(isoUtc.replace(":60", ":59"));
-    }
-
-    if (!Number.isFinite(parsed)) {
+  private resetSimulationClock(
+    etSecondsPastJ2000: number,
+  ): void {
+    if (!Number.isFinite(etSecondsPastJ2000)) {
       throw new Error(
-        `Cannot anchor simulation clock to invalid UTC epoch: ${isoUtc}`,
+        "Cannot anchor simulation clock to a non-finite ET epoch.",
       );
     }
-    this.simulationAnchorUtcMs = parsed;
+    this.simulationAnchorEtSeconds =
+      etSecondsPastJ2000;
     this.simulationAnchorRealMs = performance.now();
   }
 
   private setSimulationRate(rate: number): void {
     if (!Number.isFinite(rate)) return;
     const now = performance.now();
-    const currentUtcMs = this.simulationUtcMs(now);
-    this.simulationAnchorUtcMs = currentUtcMs;
+    const currentEtSeconds =
+      this.simulationEtSeconds(now);
+    this.simulationAnchorEtSeconds =
+      currentEtSeconds;
     this.simulationAnchorRealMs = now;
     this.simulationRate = rate;
     if (rate !== 0) this.lastNonZeroRate = rate;

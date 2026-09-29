@@ -62,6 +62,28 @@ test("positive UTC leap-second labels map to continuous ET", async () => {
     ) < 1e-9,
   );
 
+  const replayLeap = converter.fromEt(
+    leap.etSecondsPastJ2000,
+  );
+  const replayHalf = converter.fromEt(
+    leap.etSecondsPastJ2000 + 0.5,
+  );
+  const replayAfter = converter.fromEt(
+    leap.etSecondsPastJ2000 + 1,
+  );
+  assert.equal(
+    replayLeap.utcIso,
+    "2016-12-31T23:59:60Z",
+  );
+  assert.equal(
+    replayHalf.utcIso,
+    "2016-12-31T23:59:60.5Z",
+  );
+  assert.equal(
+    replayAfter.utcIso,
+    "2017-01-01T00:00:00Z",
+  );
+
   assert.throws(
     () => converter.fromUtc("2016-12-30T23:59:60Z"),
     /not a positive leap second/,
