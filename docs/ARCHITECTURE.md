@@ -35,7 +35,9 @@ Source stays on `main`; `gh-pages` is a generated publication branch. Deployment
 
 The UI accepts UTC. `TimeConverter` parses a pinned NAIF leap-seconds kernel and converts UTC -> TAI -> TT -> ET/TDB using the DELTET constants carried by the kernel. Astronomical state is a function of the absolute epoch; positions are never advanced by integrating frame deltas.
 
-The current parser intentionally refuses the literal leap-second label `23:59:60`. Normal instants on either side of a leap second use the correct TAI-UTC step. Full SPICE-compatible leap-second-label parsing is a later time-system refinement.
+Literal positive leap-second labels such as `23:59:60.5` are validated against the loaded LSK rather than normalized through JavaScript `Date`. UTC labels are mapped onto a continuous TAI-based Unix-second axis, so temporal playback preserves the extra physical second when it crosses an inserted leap second. The inverse mapping emits the literal `:60` label while the simulation is inside that interval.
+
+`JDUTC` is deliberately reported as unavailable for a leap-second label because NAIF notes that Julian Date UTC has no mechanism for uniquely naming instants inside an inserted leap second. TT/TDB/ET remain continuous and unambiguous.
 
 ## Ephemerides
 
@@ -94,7 +96,7 @@ Earth uses the pck00011 oblate reference ellipsoid and is rendered only when an 
 
 ## Temporal playback
 
-Playback is derived from an absolute simulation clock. Browser monotonic time is mapped to a UTC epoch at the selected rate; the astronomy worker then reconstructs state from the SPK for that epoch. No orbital state is integrated from the previous rendered frame.
+Playback is derived from an absolute simulation clock. Browser monotonic time advances a continuous TAI-based second axis at the selected rate; the LSK maps that axis back to an exact UTC label, including `:60` during a positive leap second. The astronomy worker then reconstructs state from the SPK for that epoch. No orbital state is integrated from the previous rendered frame.
 
 Ephemeris refreshes are rate-limited so asynchronous worker requests cannot accumulate. Camera tracking updates the camera target to follow a selected body or the Earth-Moon midpoint without changing astronomical coordinates.
 

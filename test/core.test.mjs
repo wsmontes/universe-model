@@ -6,6 +6,10 @@ import { evaluateChebyshevWithDerivative } from "../.test-dist/src/astronomy/spk
 import { SpkKernel } from "../.test-dist/src/astronomy/spk/SpkKernel.js";
 import { parseLeapSecondKernel, taiMinusUtcAt } from "../.test-dist/src/astronomy/time/LeapSecondKernel.js";
 import { TimeConverter } from "../.test-dist/src/astronomy/time/TimeConverter.js";
+import {
+  taiUnixSecondsToUtcIso,
+  utcIsoToTaiUnixSeconds,
+} from "../.test-dist/src/astronomy/time/UtcTimeline.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "../.test-dist/src/render/AtmosphereModel.js";
 import { earthBmngAssetForUtc } from "../.test-dist/src/render/SurfaceTextureManifest.js";
@@ -63,6 +67,54 @@ test("NAIF leap-second data drives UTC to ET conversion", async () => {
   assert.equal(modern.taiMinusUtcSeconds, 37);
   assert.ok(Math.abs(modern.tdbMinusTtSeconds) < 0.002);
 });
+
+test("literal UTC leap-second labels map to a continuous physical timeline", async () => {
+  const text = await readFile(new URL("../static/kernels/naif0012.tls", import.meta.url), "utf8");
+  const lsk = parseLeapSecondKernel(text, "test-naif0012");
+  const converter = new TimeConverter(lsk);
+
+  const before = converter.fromUtc("2016-12-31T23:59:59Z");
+  const leap = converter.fromUtc("2016-12-31T23:59:60Z");
+  const leapHalf = converter.fromUtc("2016-12-31T23:59:60.5Z");
+  const after = converter.fromUtc("2017-01-01T00:00:00Z");
+
+  assert.equal(leap.utcIso, "2016-12-31T23:59:60Z");
+  assert.equal(leap.utcJulianDate, null);
+  assert.equal(leap.taiMinusUtcSeconds, 36);
+  assert.equal(after.taiMinusUtcSeconds, 37);
+
+  assert.ok(Math.abs((leap.etSecondsPastJ2000 - before.etSecondsPastJ2000) - 1) < 2e-5);
+  assert.ok(Math.abs((after.etSecondsPastJ2000 - leap.etSecondsPastJ2000) - 1) < 2e-5);
+  assert.ok(Math.abs((after.etSecondsPastJ2000 - leapHalf.etSecondsPastJ2000) - 0.5) < 2e-5);
+
+  const beforeTai = utcIsoToTaiUnixSeconds(lsk, "2016-12-31T23:59:59Z");
+  const leapTai = utcIsoToTaiUnixSeconds(lsk, "2016-12-31T23:59:60Z");
+  const halfTai = utcIsoToTaiUnixSeconds(lsk, "2016-12-31T23:59:60.5Z");
+  const afterTai = utcIsoToTaiUnixSeconds(lsk, "2017-01-01T00:00:00Z");
+
+  assert.equal(leapTai - beforeTai, 1);
+  assert.equal(afterTai - leapTai, 1);
+  assert.equal(afterTai - beforeTai, 2);
+  assert.equal(taiUnixSecondsToUtcIso(lsk, leapTai), "2016-12-31T23:59:60Z");
+  assert.equal(taiUnixSecondsToUtcIso(lsk, halfTai), "2016-12-31T23:59:60.5Z");
+  assert.equal(taiUnixSecondsToUtcIso(lsk, afterTai), "2017-01-01T00:00:00Z");
+
+  assert.throws(
+    () => converter.fromUtc("2016-12-30T23:59:60Z"),
+    /not a positive UTC leap second/,
+  );
+  assert.throws(
+    () => converter.fromUtc("2016-12-31T22:59:60Z"),
+    /only valid at 23:59:60/,
+  );
+});
+
+test("Earth surface selection keeps the civil month during a leap second", () => {
+  const december = earthBmngAssetForUtc("2016-12-31T23:59:60.5Z");
+  assert.equal(december.id, "earth-bmng-base-2004-12");
+  assert.equal(december.dataEpoch, "2004-12");
+});
+
 
 test("finite-disk eclipse visibility handles umbra, penumbra and no overlap", () => {
   assert.equal(circleVisibleFraction(0.01, 0.02, 0), 0);

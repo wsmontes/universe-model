@@ -8,6 +8,15 @@ import { KernelLoader, type LoadedKernel } from "../data/KernelLoader.js";
 import { AuxiliaryKernelLoader, type LoadedOrientationKernel } from "../data/AuxiliaryKernelLoader.js";
 import { ORIENTATION_KERNELS } from "../data/OrientationKernelManifest.js";
 import { bodyModel } from "../render/BodyModels.js";
+import {
+  parseLeapSecondKernel,
+  type LeapSecondKernelData,
+} from "../astronomy/time/LeapSecondKernel.js";
+import {
+  taiUnixSecondsToUtcIso,
+  utcCalendarMonthIndex,
+  utcIsoToTaiUnixSeconds,
+} from "../astronomy/time/UtcTimeline.js";
 import { OrbitCamera } from "../render/OrbitCamera.js";
 import { WebGpuRenderer } from "../render/WebGpuRenderer.js";
 
@@ -45,10 +54,11 @@ export class App {
   private states: readonly CelestialState[] = [];
   private frameSelection: FrameSelection = NAIF.EARTH;
   private leapSecondKernelText = "";
+  private leapSecondKernel: LeapSecondKernelData | null = null;
 
   private simulationRate = 0;
   private lastNonZeroRate = 3600;
-  private simulationAnchorUtcMs = Date.now();
+  private simulationAnchorTaiUnixSeconds = 0;
   private simulationAnchorRealMs = performance.now();
   private animationHandle: number | null = null;
   private lastEphemerisRequestRealMs = 0;
@@ -77,7 +87,6 @@ export class App {
 
   async start(): Promise<void> {
     this.epochInput.value = currentUtcIso();
-    this.resetSimulationClock(this.epochInput.value);
     this.bindUi();
     this.camera.setChangeHandler(() => this.render());
 
@@ -92,6 +101,7 @@ export class App {
 
     try {
       this.leapSecondKernelText = await this.loadLeapSecondKernel();
+      this.resetSimulationClock(this.epochInput.value);
       const loaded = await this.loadBestPlanetaryKernel();
       const orientationKernels = await this.loadOrientationKernels();
       await this.initializeProvider(loaded, orientationKernels);
@@ -147,7 +157,9 @@ export class App {
   private async loadLeapSecondKernel(): Promise<string> {
     const response = await fetch("./kernels/naif0012.tls", { cache: "force-cache" });
     if (!response.ok) throw new Error(`Unable to load local NAIF leap-seconds kernel (${response.status}).`);
-    return response.text();
+    const text = await response.text();
+    this.leapSecondKernel = parseLeapSecondKernel(text, "NAIF naif0012.tls");
+    return text;
   }
 
   private async loadBestPlanetaryKernel(): Promise<LoadedKernel> {
@@ -277,9 +289,13 @@ export class App {
   }
 
   private prepareSurfacesForEpoch(isoUtc: string): void {
-    const instant = new Date(isoUtc);
-    if (!Number.isFinite(instant.getTime())) return;
-    const key = String(instant.getUTCMonth() + 1).padStart(2, "0");
+    let monthIndex: number;
+    try {
+      monthIndex = utcCalendarMonthIndex(isoUtc);
+    } catch {
+      return;
+    }
+    const key = String(monthIndex + 1).padStart(2, "0");
     if (key === this.surfaceEpochKey) return;
 
     this.surfaceEpochKey = key;
@@ -307,37 +323,40 @@ export class App {
     if (this.simulationRate === 0 || !this.provider || this.tickInFlight) return;
     if (now - this.lastEphemerisRequestRealMs < 33) return;
 
-    const utcMs = this.simulationUtcMs(now);
-    if (!Number.isFinite(utcMs)) {
+    const kernel = this.leapSecondKernel;
+    if (!kernel) return;
+    const taiUnixSeconds = this.simulationTaiUnixSeconds(now);
+    if (!Number.isFinite(taiUnixSeconds)) {
       this.setSimulationRate(0);
       return;
     }
 
     this.lastEphemerisRequestRealMs = now;
     this.tickInFlight = true;
-    const iso = new Date(utcMs).toISOString();
+    const iso = taiUnixSecondsToUtcIso(kernel, taiUnixSeconds, 3);
     void this.refreshAstronomy(false, iso, true, false).finally(() => {
       this.tickInFlight = false;
     });
   };
 
-  private simulationUtcMs(realNow = performance.now()): number {
-    return this.simulationAnchorUtcMs +
-      (realNow - this.simulationAnchorRealMs) * this.simulationRate;
+  private simulationTaiUnixSeconds(realNow = performance.now()): number {
+    return this.simulationAnchorTaiUnixSeconds +
+      ((realNow - this.simulationAnchorRealMs) / 1000) * this.simulationRate;
   }
 
   private resetSimulationClock(isoUtc: string): void {
-    const parsed = Date.parse(isoUtc);
-    if (!Number.isFinite(parsed)) throw new Error(`Cannot anchor simulation clock to invalid UTC epoch: ${isoUtc}`);
-    this.simulationAnchorUtcMs = parsed;
+    const kernel = this.leapSecondKernel;
+    if (!kernel) throw new Error("Leap-second kernel is not loaded.");
+    this.simulationAnchorTaiUnixSeconds =
+      utcIsoToTaiUnixSeconds(kernel, isoUtc);
     this.simulationAnchorRealMs = performance.now();
   }
 
   private setSimulationRate(rate: number): void {
-    if (!Number.isFinite(rate)) return;
+    if (!Number.isFinite(rate) || !this.leapSecondKernel) return;
     const now = performance.now();
-    const currentUtcMs = this.simulationUtcMs(now);
-    this.simulationAnchorUtcMs = currentUtcMs;
+    const currentTaiUnixSeconds = this.simulationTaiUnixSeconds(now);
+    this.simulationAnchorTaiUnixSeconds = currentTaiUnixSeconds;
     this.simulationAnchorRealMs = now;
     this.simulationRate = rate;
     if (rate !== 0) this.lastNonZeroRate = rate;

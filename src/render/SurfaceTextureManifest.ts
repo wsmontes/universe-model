@@ -1,3 +1,5 @@
+import { utcCalendarMonthIndex } from "../astronomy/time/UtcTimeline.js";
+
 export interface SurfaceTextureAsset {
   readonly id: string;
   readonly bodyId: number;
@@ -30,11 +32,12 @@ const MONTH_NAMES = Object.freeze([
 ] as const);
 
 export function earthBmngAssetForUtc(isoUtc: string): SurfaceTextureAsset {
-  const instant = new Date(isoUtc);
-  if (!Number.isFinite(instant.getTime())) {
+  let monthIndex: number;
+  try {
+    monthIndex = utcCalendarMonthIndex(isoUtc);
+  } catch {
     throw new Error(`Invalid UTC epoch for Earth surface selection: ${isoUtc}`);
   }
-  const monthIndex = instant.getUTCMonth();
   const monthNumber = String(monthIndex + 1).padStart(2, "0");
   const monthName = MONTH_NAMES[monthIndex];
   if (!monthName) throw new Error(`Unsupported calendar month index ${monthIndex}.`);

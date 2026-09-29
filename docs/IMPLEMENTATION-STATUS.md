@@ -32,7 +32,8 @@
 - Earth Blue Marble Next Generation monthly 2004 base-map selection by calendar month;
 - sRGB GPU texture decoding before physical illumination;
 - NAIF LSK parsing;
-- UTC -> TAI -> TT -> ET/TDB conversion for ordinary UTC labels;
+- UTC -> TAI -> TT -> ET/TDB conversion, including literal positive leap-second labels;
+- continuous TAI-based playback timeline that preserves inserted UTC leap seconds;
 - DAF file/summary parsing;
 - SPK Type 2 Chebyshev position and analytic velocity;
 - barycentric segment-chain composition;
@@ -73,7 +74,7 @@ The current test suite covers:
 
 1. MD5 standard vectors;
 2. Chebyshev value and analytic derivative;
-3. leap-second step and UTC -> ET sanity checks;
+3. leap-second step, literal `:60` parsing, UTC <-> continuous TAI timeline, and UTC -> ET sanity checks;
 4. finite-disk overlap cases for umbra, penumbra and no eclipse;
 5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction;
 6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction.
@@ -82,7 +83,6 @@ The current test suite covers:
 
 The following are deliberately not presented as solved:
 
-- literal `:60` UTC leap-second input;
 - full CSPICE equivalence over all time parsing cases;
 - tighter matrix-by-matrix golden validation of Earth orientation against CSPICE;
 - long-range high-precision Earth orientation outside the pinned daily PCK coverage;

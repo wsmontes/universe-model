@@ -25,7 +25,7 @@
 - [x] provenance surfaced at runtime
 - [x] absolute-epoch forward/reverse temporal playback
 - [ ] real-kernel golden-vector verification against SPICE/Horizons
-- [ ] literal UTC leap-second (`:60`) input
+- [x] literal UTC leap-second (`:60`) input and leap-aware playback timeline
 
 ## M2 — First physically rendered bodies
 
