@@ -167,3 +167,18 @@ NASA notes that TSI is not literally constant: solar activity changes it by roug
 The physical Sun radius comes from the project's pinned `pck00011.tpc` body radii. That radius plus the exact au and the reference TSI define the initial uniform solar-disk radiance.
 
 This milestone is broadband. Spectral solar irradiance, limb darkening, wavelength-dependent surface BRDF, and a calibrated sensor spectral response remain separate future layers.
+
+
+## Observed-state corrections
+
+Observed-state queries use the same verified planetary SPK as geometric state.
+
+Current reception-mode corrections:
+
+- `LT`: one Newtonian one-way light-time evaluation;
+- `CN`: iterated Newtonian light-time solution;
+- `+S`: Newtonian stellar aberration using the observer's barycentric J2000 velocity.
+
+Returned provenance records the observer NAIF ID, requested correction, reception epoch, target emission epoch, and light-time seconds. Corrected relative velocity is currently a central numerical derivative of the corrected position function and is explicitly labeled `central-difference-corrected-position`.
+
+This layer is an observation product, not a mutation of the world model. The WebGPU scene remains geometric until retarded illumination and occultation can be evaluated consistently.

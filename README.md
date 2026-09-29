@@ -16,7 +16,9 @@ UTC input
   -> camera-relative WebGPU rendering
 ```
 
-The application does not enlarge bodies, compress distances, add ambient light, or invent a star field. Earth and Moon are intentionally rendered with orientation-independent surface models until authoritative body-fixed frames are implemented.
+The application does not enlarge bodies, compress distances, add ambient light, or invent a star field. Earth and Moon use authoritative body-fixed orientation when the required binary PCK coverage is available; otherwise the renderer withholds orientation-dependent claims rather than fabricating them.
+
+A separate observation engine now exposes reception-mode light-time and stellar-aberration corrections (`LT`, `CN`, `LT+S`, `CN+S`). The visible scene remains geometric until retarded illumination can be made causally consistent.
 
 ## Run locally
 

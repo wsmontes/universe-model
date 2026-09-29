@@ -25,7 +25,7 @@
 - [x] provenance surfaced at runtime
 - [x] absolute-epoch forward/reverse temporal playback
 - [ ] real-kernel golden-vector verification against SPICE/Horizons
-- [ ] literal UTC leap-second (`:60`) input
+- [x] literal positive UTC leap-second (`:60`) input validated against the pinned LSK
 
 ## M2 — First physically rendered bodies
 
@@ -62,8 +62,10 @@
 - [ ] ocean BRDF/Fresnel model
 - [x] explicit deterministic display reference-radiance transform
 - [ ] calibrated spectral exposure/instrument model
-- [ ] observer-corrected light-time mode
-- [ ] aberration model
+- [x] observer-corrected one-way light-time engine (LT/CN)
+- [x] Newtonian stellar aberration (`+S`)
+- [x] explicit Earth/Moon/Sun/SSB CN+S observation probe
+- [ ] full observed-scene rendering with causally consistent retarded illumination
 
 ## M5 — Stellar space
 

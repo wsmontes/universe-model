@@ -35,7 +35,7 @@ Source stays on `main`; `gh-pages` is a generated publication branch. Deployment
 
 The UI accepts UTC. `TimeConverter` parses a pinned NAIF leap-seconds kernel and converts UTC -> TAI -> TT -> ET/TDB using the DELTET constants carried by the kernel. Astronomical state is a function of the absolute epoch; positions are never advanced by integrating frame deltas.
 
-The current parser intentionally refuses the literal leap-second label `23:59:60`. Normal instants on either side of a leap second use the correct TAI-UTC step. Full SPICE-compatible leap-second-label parsing is a later time-system refinement.
+Positive UTC leap-second labels such as `23:59:60` are accepted only when the pinned LSK declares the corresponding TAI-UTC step at the following midnight. The converter constructs continuous TT/ET seconds directly around J2000 instead of relying on JavaScript `Date` or subtracting large Julian Dates through the discontinuity. Arbitrary `:60` labels are rejected.
 
 ## Ephemerides
 
@@ -235,3 +235,19 @@ stored_radiance = radiance_W_m2_sr / 1000
 ```
 
 so the solar disk is ~20,032 stored units, below the `rgba16float` maximum 65,504. A 100 W·m⁻²·sr⁻¹ display reference becomes 0.1 stored units. This scale is a numeric representation detail only; it is not an exposure adjustment and does not alter the physical scene.
+
+
+## Geometric versus observed state
+
+The physical renderer continues to use simultaneous geometric J2000/SSB states. Observation is a separate query because “where the body is at epoch T” and “where photons arriving at an observer at T originated” are different physical questions.
+
+The observation engine supports:
+
+- `NONE`: simultaneous geometric target/observer state;
+- `LT`: one-pass Newtonian one-way light-time correction;
+- `CN`: converged Newtonian light time using iterative retarded target epochs;
+- `LT+S` and `CN+S`: the corresponding reception correction plus Newtonian stellar aberration from the observer's barycentric velocity.
+
+For reception corrections, the observer is evaluated at the observation epoch while the target is evaluated at the retarded emission epoch. Corrected velocity is the central finite difference of the same corrected-position function; it is explicitly identified in provenance rather than being presented as an analytic SPICE-equivalent velocity derivative.
+
+The UI exposes a CN+S observation probe for Sun/Earth/Moon/SSB combinations, including light time and emission ET. It deliberately does **not** replace the rendered body state yet: a fully observed render also requires causally consistent illumination/shadow evaluation at retarded epochs. Mixing apparent positions with simultaneous lighting would be a less physical result than leaving the render geometric.

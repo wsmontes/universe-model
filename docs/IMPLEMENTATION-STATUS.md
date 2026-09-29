@@ -32,7 +32,9 @@
 - Earth Blue Marble Next Generation monthly 2004 base-map selection by calendar month;
 - sRGB GPU texture decoding before physical illumination;
 - NAIF LSK parsing;
-- UTC -> TAI -> TT -> ET/TDB conversion for ordinary UTC labels;
+- UTC -> TAI -> TT -> ET/TDB conversion, including validated positive leap-second `:60` labels declared by the pinned LSK;
+- observer-corrected apparent-state engine with one-way LT, converged Newtonian CN, and optional stellar aberration (`+S`);
+- separate CN+S observation probe in the UI that does not silently replace the geometric render state;
 - DAF file/summary parsing;
 - SPK Type 2 Chebyshev position and analytic velocity;
 - barycentric segment-chain composition;
@@ -73,16 +75,17 @@ The current test suite covers:
 
 1. MD5 standard vectors;
 2. Chebyshev value and analytic derivative;
-3. leap-second step and UTC -> ET sanity checks;
+3. leap-second step, literal positive `:60` labels, UTC -> ET continuity, and invalid-leap rejection;
 4. finite-disk overlap cases for umbra, penumbra and no eclipse;
 5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction;
-6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction.
+6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction;
+7. synthetic converged one-way light-time reconstruction;
+8. Newtonian stellar-aberration direction/range invariants.
 
 ## Not yet claimed
 
 The following are deliberately not presented as solved:
 
-- literal `:60` UTC leap-second input;
 - full CSPICE equivalence over all time parsing cases;
 - tighter matrix-by-matrix golden validation of Earth orientation against CSPICE;
 - long-range high-precision Earth orientation outside the pinned daily PCK coverage;
@@ -96,7 +99,7 @@ The following are deliberately not presented as solved:
 - time-varying TSI/SSI tied to solar activity;
 - spectral solar radiance and spectral sensor response;
 - calibrated camera/sensor response beyond the explicit reference-radiance display transform;
-- light-time/aberration observed mode;
+- full observed-scene rendering with causally consistent retarded illumination (the apparent-state engine/probe is implemented, but the physical render remains geometric by design);
 - Gaia star catalogue;
 - empirical comparison against a real DE442s kernel in this repository's automated test environment.
 
