@@ -237,3 +237,16 @@ stored_radiance = radiance_W_m2_sr / 1000
 ```
 
 so the solar disk is ~20,032 stored units, below the `rgba16float` maximum 65,504. A 100 W·m⁻²·sr⁻¹ display reference becomes 0.1 stored units. This scale is a numeric representation detail only; it is not an exposure adjustment and does not alter the physical scene.
+
+
+## External real-kernel validation
+
+`npm run validate:real-kernel` is a development/scientific integrity gate, not a production service and not a GitHub Actions workflow. It compiles the same TypeScript SPK implementation used by the browser, obtains the exact pinned DE442s kernel, verifies its byte length and MD5 using both the project MD5 implementation and Node's independent implementation, then evaluates real Type 2 segments at multiple TDB epochs.
+
+The resulting geometric J2000/ICRF vectors are compared with JPL Horizons for:
+
+- Moon relative to Earth, exercising the Earth-Moon chain;
+- Sun relative to Earth, exercising independent center subtraction at solar-system scale;
+- Earth relative to the Solar System Barycenter, exercising the barycentric chain directly.
+
+Horizons and the project are not assumed to use the same planetary solution: Horizons currently exposes the DE440/441 family while Universe Model pins DE442s. The declared tolerances are therefore deliberately cross-ephemeris convention gates. They are meant to catch incorrect target/center resolution, axes, units, Chebyshev record selection, derivative scaling, or frame convention. An immutable same-ephemeris CSPICE/Horizons golden fixture remains a stricter future gate.

@@ -101,7 +101,9 @@ test("literal UTC leap-second labels map to a continuous physical timeline", asy
     "2016-12-31T23:59:59.9996Z",
   );
   assert.ok(almostLeap < leapTai);
-  assert.ok(Math.abs((leapTai - almostLeap) - 0.0004) < 1e-7);
+  // At Unix-era magnitudes a double has sub-microsecond granularity, so
+  // keep this below one microsecond rather than demanding nanoseconds.
+  assert.ok(Math.abs((leapTai - almostLeap) - 0.0004) < 1e-6);
 
   assert.equal(taiUnixSecondsToUtcIso(lsk, leapTai), "2016-12-31T23:59:60Z");
   assert.equal(taiUnixSecondsToUtcIso(lsk, halfTai), "2016-12-31T23:59:60.5Z");

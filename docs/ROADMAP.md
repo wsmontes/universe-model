@@ -24,7 +24,8 @@
 - [x] kernel byte-length + official MD5 validation
 - [x] provenance surfaced at runtime
 - [x] absolute-epoch forward/reverse temporal playback
-- [ ] real-kernel golden-vector verification against SPICE/Horizons
+- [x] real DE442s + live Horizons cross-validation harness
+- [ ] immutable real-kernel golden-vector fixture against SPICE/Horizons
 - [x] literal UTC leap-second (`:60`) input and leap-aware playback timeline
 
 ## M2 — First physically rendered bodies

@@ -66,7 +66,7 @@ This produces full illumination, partial penumbra, annular visibility, or total 
 
 Core numerical primitives are covered by synthetic/local tests. The orientation path also contains a runtime integration gate using the official NAIF lunar-frame reference example at ET 717768000: the Earth-relative-Moon position transformed into MOON_PA is compared with the published vector [373997.028, -23558.987, 10284.057] km. A gross frame-order/sign error aborts orientation initialization rather than rendering a false body-fixed frame.
 
-A full real-kernel regression suite executed outside the browser is still pending.
+A local real-kernel validation harness is now available as `npm run validate:real-kernel`. It downloads or reuses the exact pinned DE442s bytes, verifies both byte length and MD5, parses the real DAF/SPK, and compares geometric Moon/Earth, Sun/Earth, and Earth/SSB state vectors at multiple TDB epochs against JPL Horizons. Because Horizons currently uses the DE440/441 family while this project pins DE442s, the harness uses declared cross-ephemeris tolerances as a convention/integration gate rather than claiming bit-for-bit equality. A captured, immutable golden-vector fixture remains pending.
 
 ## Local automated tests
 
@@ -78,6 +78,8 @@ The current test suite covers:
 4. finite-disk overlap cases for umbra, penumbra and no eclipse;
 5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction;
 6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction.
+
+The separate `npm run validate:real-kernel` gate uses the actual DE442s kernel and live JPL Horizons vectors. It is intentionally not part of `npm test`: the ordinary test suite stays deterministic and offline, while the scientific cross-check is an explicit networked validation step.
 
 ## Not yet claimed
 

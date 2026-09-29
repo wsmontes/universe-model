@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/test.mjs",
     "preview": "node scripts/serve-static.mjs",
-    "deploy:pages": "node scripts/deploy-pages.mjs"
+    "deploy:pages": "node scripts/deploy-pages.mjs",
+    "validate:real-kernel": "node scripts/validate-real-kernel.mjs"
   },
   "devDependencies": {
     "@webgpu/types": "^0.1.64",
