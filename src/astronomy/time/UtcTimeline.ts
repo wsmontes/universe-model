@@ -166,7 +166,10 @@ export function utcIsoToTaiUnixSeconds(
     return parsed.posixUnixSeconds + transition.previousDeltaAt;
   }
 
-  const unixMs = Math.round(parsed.posixUnixSeconds * 1000);
+  // Use the containing UTC millisecond when selecting DELTA_AT. Rounding
+  // could incorrectly cross a leap boundary for a label such as
+  // 23:59:59.9996.
+  const unixMs = Math.floor(parsed.posixUnixSeconds * 1000);
   const deltaAt = taiMinusUtcAt(kernel, unixMs);
   return parsed.posixUnixSeconds + deltaAt;
 }

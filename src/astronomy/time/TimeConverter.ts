@@ -48,17 +48,21 @@ export class TimeConverter {
   fromUtc(isoUtc: string): TimeInstant {
     const parsed = parseIsoUtcLabel(isoUtc);
     const taiUnixSeconds = utcIsoToTaiUnixSeconds(this.kernel, isoUtc);
-    const taiMinusUtcSeconds = taiUnixSeconds - parsed.posixUnixSeconds;
+    const taiMinusUtcSeconds = Math.round(
+      taiUnixSeconds - parsed.posixUnixSeconds,
+    );
 
     const utcJulianDate = parsed.isLeapSecond
       ? null
       : UNIX_EPOCH_JD + parsed.posixUnixSeconds / SECONDS_PER_DAY;
 
     const ttUnixSeconds = taiUnixSeconds + this.kernel.deltaTaSeconds;
-    const ttJulianDate =
-      UNIX_EPOCH_JD + ttUnixSeconds / SECONDS_PER_DAY;
+    const j2000TtUnixSeconds =
+      (J2000_JD - UNIX_EPOCH_JD) * SECONDS_PER_DAY;
     const ttSecondsPastJ2000 =
-      (ttJulianDate - J2000_JD) * SECONDS_PER_DAY;
+      ttUnixSeconds - j2000TtUnixSeconds;
+    const ttJulianDate =
+      J2000_JD + ttSecondsPastJ2000 / SECONDS_PER_DAY;
     const periodic = tdbMinusTtSeconds(this.kernel, ttSecondsPastJ2000);
     const etSecondsPastJ2000 = ttSecondsPastJ2000 + periodic;
     const tdbJulianDate =

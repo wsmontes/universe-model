@@ -95,6 +95,14 @@ test("literal UTC leap-second labels map to a continuous physical timeline", asy
   assert.equal(leapTai - beforeTai, 1);
   assert.equal(afterTai - leapTai, 1);
   assert.equal(afterTai - beforeTai, 2);
+
+  const almostLeap = utcIsoToTaiUnixSeconds(
+    lsk,
+    "2016-12-31T23:59:59.9996Z",
+  );
+  assert.ok(almostLeap < leapTai);
+  assert.ok(Math.abs((leapTai - almostLeap) - 0.0004) < 1e-7);
+
   assert.equal(taiUnixSecondsToUtcIso(lsk, leapTai), "2016-12-31T23:59:60Z");
   assert.equal(taiUnixSecondsToUtcIso(lsk, halfTai), "2016-12-31T23:59:60.5Z");
   assert.equal(taiUnixSecondsToUtcIso(lsk, afterTai), "2017-01-01T00:00:00Z");
