@@ -53,6 +53,8 @@ export class App {
   private animationHandle: number | null = null;
   private lastEphemerisRequestRealMs = 0;
   private tickInFlight = false;
+  private observationInFlight = false;
+  private lastObservationRequestRealMs = 0;
   private surfaceEpochKey = "";
 
   private readonly epochInput = element<HTMLInputElement>("#epoch-input");
@@ -74,6 +76,12 @@ export class App {
   private readonly kernelFile = element<HTMLInputElement>("#kernel-file");
   private readonly playToggle = element<HTMLButtonElement>("#play-toggle");
   private readonly timeRate = element<HTMLSelectElement>("#time-rate");
+  private readonly observationObserver =
+    element<HTMLSelectElement>("#observation-observer");
+  private readonly observationTarget =
+    element<HTMLSelectElement>("#observation-target");
+  private readonly observationStatus =
+    element<HTMLElement>("#observation-status");
 
   async start(): Promise<void> {
     this.epochInput.value = currentUtcIso();
@@ -124,6 +132,12 @@ export class App {
     });
     this.displayReferenceRadiance.addEventListener("input", () => {
       this.render();
+    });
+    this.observationObserver.addEventListener("change", () => {
+      void this.refreshObservation(this.epochInput.value.trim(), false);
+    });
+    this.observationTarget.addEventListener("change", () => {
+      void this.refreshObservation(this.epochInput.value.trim(), false);
     });
 
     for (const button of document.querySelectorAll<HTMLButtonElement>("[data-frame]")) {
@@ -261,6 +275,7 @@ export class App {
         this.timeStatus.textContent = `ET ${first.etSecondsPastJ2000.toFixed(3)} s past J2000 (TDB) · rate ${this.formatRate()}`;
         if (resetClock) this.resetSimulationClock(first.epochUtc);
         this.prepareSurfacesForEpoch(first.epochUtc);
+        void this.refreshObservation(first.epochUtc, quiet);
       }
 
       if (reframe) this.frameCamera();
@@ -273,6 +288,57 @@ export class App {
     } catch (error) {
       this.setSimulationRate(0);
       this.message.textContent = this.errorMessage(error);
+    }
+  }
+
+  private async refreshObservation(
+    isoUtc: string,
+    quiet: boolean,
+  ): Promise<void> {
+    const provider = this.provider;
+    if (!provider || this.observationInFlight) return;
+
+    const now = performance.now();
+    if (
+      quiet &&
+      now - this.lastObservationRequestRealMs < 250
+    ) {
+      return;
+    }
+
+    this.lastObservationRequestRealMs = now;
+    this.observationInFlight = true;
+    const observerBodyId = Number(this.observationObserver.value);
+    const targetBodyId = Number(this.observationTarget.value);
+
+    try {
+      const observations = await provider.observedStatesAt(
+        [targetBodyId],
+        observerBodyId,
+        { isoUtc },
+        "CN+S",
+      );
+      const observation = observations[0];
+      if (!observation) {
+        this.observationStatus.textContent = "no observation returned";
+        return;
+      }
+
+      const targetName =
+        BODY_NAMES[targetBodyId] ?? String(targetBodyId);
+      const observerName =
+        BODY_NAMES[observerBodyId] ?? String(observerBodyId);
+      const rangeMeters = magnitude(
+        observation.relativePositionMeters,
+      );
+
+      this.observationStatus.textContent =
+        `${targetName} from ${observerName} · CN+S · ${observation.lightTimeSeconds.toFixed(6)} s light-time · ${formatDistance(rangeMeters)} · emission ET ${observation.emissionEtSecondsPastJ2000.toFixed(3)}`;
+    } catch (error) {
+      this.observationStatus.textContent =
+        `unavailable: ${this.errorMessage(error)}`;
+    } finally {
+      this.observationInFlight = false;
     }
   }
 
@@ -327,8 +393,24 @@ export class App {
   }
 
   private resetSimulationClock(isoUtc: string): void {
-    const parsed = Date.parse(isoUtc);
-    if (!Number.isFinite(parsed)) throw new Error(`Cannot anchor simulation clock to invalid UTC epoch: ${isoUtc}`);
+    let parsed = Date.parse(isoUtc);
+
+    // JavaScript Date cannot represent the UTC label :60. For a paused
+    // leap-second query, map the playback anchor onto the final POSIX
+    // second before midnight. The astronomy provider retains the exact
+    // :60 label and ET; ordinary playback remains Date-based.
+    if (
+      !Number.isFinite(parsed) &&
+      /:60(?:\.\d+)?Z$/.test(isoUtc)
+    ) {
+      parsed = Date.parse(isoUtc.replace(":60", ":59"));
+    }
+
+    if (!Number.isFinite(parsed)) {
+      throw new Error(
+        `Cannot anchor simulation clock to invalid UTC epoch: ${isoUtc}`,
+      );
+    }
     this.simulationAnchorUtcMs = parsed;
     this.simulationAnchorRealMs = performance.now();
   }

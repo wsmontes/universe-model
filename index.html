@@ -70,6 +70,36 @@
             <dt>Optics</dt><dd>radiance W·m⁻²·sr⁻¹ · TSI 1361 W·m⁻² @ 1 au</dd>
             <dt>Surface</dt><dd id="surface-status">uniform physical materials</dd>
           </dl>
+          <div class="observation-panel">
+            <strong>Observed-state probe</strong>
+            <div class="observation-grid">
+              <label class="speed-field">
+                <span>Observer</span>
+                <select id="observation-observer">
+                  <option value="399" selected>Earth</option>
+                  <option value="301">Moon</option>
+                  <option value="10">Sun</option>
+                  <option value="0">Solar System Barycenter</option>
+                </select>
+              </label>
+              <label class="speed-field">
+                <span>Target</span>
+                <select id="observation-target">
+                  <option value="301" selected>Moon</option>
+                  <option value="10">Sun</option>
+                  <option value="399">Earth</option>
+                </select>
+              </label>
+            </div>
+            <p id="observation-status" class="observation-status">
+              waiting for ephemeris
+            </p>
+            <p class="observation-note">
+              Reception CN+S applies converged one-way light time and
+              Newtonian stellar aberration. The rendered scene remains
+              geometric until causal illumination is implemented.
+            </p>
+          </div>
           <label class="field">
             <span>Display reference radiance (W·m⁻²·sr⁻¹)</span>
             <input
