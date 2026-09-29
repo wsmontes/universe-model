@@ -45,9 +45,15 @@ The project vendors only the constants/table needed at runtime and retains upstr
 
 Verified bytes are then eligible for browser cache storage.
 
+### External state-vector validation
+
+The development command `npm run validate:real-kernel` independently re-verifies the pinned DE442s file and evaluates the project's actual Type 2 SPK implementation against live JPL Horizons vector output at multiple TDB epochs. It checks Moon relative to Earth, Sun relative to Earth, and Earth relative to the Solar System Barycenter, including analytic velocity.
+
+This is intentionally described as a **cross-ephemeris** gate: Horizons currently uses DE440/441-family major-body trajectories, while Universe Model pins DE442s. The tolerances are therefore designed to reveal unit, axis, center-chain, record-selection, derivative-scaling, and frame-convention errors, not to claim bitwise equivalence between distinct JPL solutions. An immutable same-ephemeris golden fixture remains a separate pending validation step.
+
 ## Surface and stellar data
 
-No external surface map, DEM, cloud field, night-light layer, or stellar catalogue is part of the first milestone. Each will receive its own provenance record before it can appear in the physical scene.
+Earth currently has a separately documented dated BMNG reference surface-color product below. DEM, cloud field, night-light layer, lunar scientific surface color, and stellar catalogue data are not yet part of the physical scene. Each new dataset receives its own provenance record before it can appear.
 
 ## Body shape constants
 
@@ -57,7 +63,7 @@ The first body shapes are pinned from NASA/JPL NAIF `pck00011.tpc`:
 - Earth `BODY399_RADII = (6378.1366, 6378.1366, 6356.7519) km`
 - Moon `BODY301_RADII = (1737.4, 1737.4, 1737.4) km`
 
-These are stored in SI meters in `ShapeConstants.ts`. Earth is therefore rendered as an oblate ellipsoid once an authoritative body-fixed orientation is available.
+These are stored in SI meters in `ShapeConstants.ts`. Earth is rendered as the oblate reference ellipsoid when the authoritative ITRF93 binary-PCK orientation is available for the requested epoch.
 
 ## High-precision Earth orientation
 

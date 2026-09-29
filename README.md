@@ -27,9 +27,16 @@ npm install
 npm test
 npm run build
 npm run preview
+
+# Networked scientific cross-check using the real DE442s kernel + JPL Horizons:
+npm run validate:real-kernel
 ```
 
 The preview server only serves static files from `dist/`. The production application has no backend.
+
+The epoch field accepts strict UTC labels, including real positive leap-second labels such as `2016-12-31T23:59:60.5Z` when they are declared by the pinned NAIF leap-seconds kernel. Playback advances on a continuous physical-time axis, so an inserted leap second is not silently skipped by JavaScript/POSIX time.
+
+`npm run validate:real-kernel` is intentionally separate from the offline unit suite. It downloads or reuses the exact pinned DE442s kernel, verifies its identity, and compares real geometric state vectors against JPL Horizons at multiple TDB epochs. Horizons currently uses the DE440/441 family, so this is a cross-ephemeris convention/integration gate rather than a bitwise same-solution comparison.
 
 ## GitHub Pages
 
