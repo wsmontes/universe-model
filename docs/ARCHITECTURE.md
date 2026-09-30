@@ -250,3 +250,41 @@ The resulting geometric J2000/ICRF vectors are compared with JPL Horizons for:
 - Earth relative to the Solar System Barycenter, exercising the barycentric chain directly.
 
 Horizons and the project are not assumed to use the same planetary solution: Horizons currently exposes the DE440/441 family while Universe Model pins DE442s. The declared tolerances are therefore deliberately cross-ephemeris convention gates. They are meant to catch incorrect target/center resolution, axes, units, Chebyshev record selection, derivative scaling, or frame convention. An immutable same-ephemeris CSPICE/Horizons golden fixture remains a stricter future gate.
+
+## Multiscale evidence boundary
+
+The next architecture layer separates scientific sources from rendering. The renderer must not grow source-specific calls such as `getEarthTexture()`, `getCopernicusDem()` or `getGaiaStars()`. Sources adapt into a common evidence contract:
+
+```text
+request
+(time, position, scale, payload kind)
+        |
+        v
+EvidenceRegistry
+        |
+        v
+EvidenceProvider.coverage()
+        |
+        v
+EvidenceProvider.resolve()
+        |
+        v
+EvidenceResolver
+        |
+        v
+best valid evidence
+        |
+        v
+stream/cache/LOD
+        |
+        v
+WebGPU
+```
+
+The first generic payload kinds are terrain, raster, vector, point-cloud, mesh and catalogue tiles. Evidence carries source identity, evidence kind, spatial/temporal resolution, observation epoch when known, reference frame, vertical datum when relevant, uncertainty, licence/attribution, integrity metadata and the payload.
+
+The resolver applies hard compatibility constraints before quality selection. Reference-frame and vertical-datum mismatches are errors, not cosmetic conversion opportunities. Selection order is explicit per query; the default currently considers spatial resolution, temporal distance, uncertainty and source authority.
+
+Temporal distance is deliberately timeline-agnostic. `EvidenceInstant` may carry both the literal UTC label and a caller-supplied monotonic `timelineSeconds` coordinate (for example the project's TAI-based Unix-second axis). The evidence core never normalizes leap-second labels through JavaScript `Date`.
+
+NASA Blue Marble: Next Generation is the first concrete adapter. It is represented as a dated 2004 processed reconstruction with an unverified remote runtime asset, rather than being hard-coded as "the Earth texture".

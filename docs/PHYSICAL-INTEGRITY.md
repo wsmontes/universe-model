@@ -47,3 +47,14 @@ Every time-dependent state should answer:
 The first live milestone surfaces this information in the UI for the active ephemeris.
 
 Unknown values are preferable to fabricated values.
+
+## Multiscale evidence rules
+
+The evidence system adds two rules to the existing "unknown is preferable to fabricated" principle:
+
+- **Lower-resolution truth is preferable to higher-resolution invention.**
+- **An older identified observation is preferable to an undated synthetic representation.**
+
+A provider must not silently promote source resolution, invent missing geometry, hide a temporal mismatch, or convert an inferred/modelled value into a measurement. If two datasets overlap, selection must be driven by declared evidence metadata such as coverage, spatial resolution, temporal correspondence, uncertainty, reference frame, datum and source authority.
+
+Temporal comparison is never derived with JavaScript `Date` inside the resolver. When temporal ordering matters, the caller/provider supplies a continuous comparison coordinate on a declared timeline so leap-second semantics remain outside the generic evidence layer and can continue to use the project's NAIF-derived time model.

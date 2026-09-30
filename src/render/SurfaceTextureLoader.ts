@@ -1,7 +1,7 @@
-import type { SurfaceTextureAsset } from "./SurfaceTextureManifest.js";
+import type { SurfaceRasterAsset } from "../evidence/SurfaceRasterAsset.js";
 
 export interface LoadedSurfaceTexture {
-  readonly asset: SurfaceTextureAsset;
+  readonly asset: SurfaceRasterAsset;
   readonly texture: GPUTexture;
   readonly width: number;
   readonly height: number;
@@ -14,7 +14,7 @@ export class SurfaceTextureLoader {
     this.device = device;
   }
 
-  async load(asset: SurfaceTextureAsset): Promise<LoadedSurfaceTexture> {
+  async load(asset: SurfaceRasterAsset): Promise<LoadedSurfaceTexture> {
     const response = await fetch(asset.url, {
       mode: "cors",
       cache: "force-cache",

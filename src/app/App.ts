@@ -19,6 +19,9 @@ import {
 } from "../astronomy/time/UtcTimeline.js";
 import { OrbitCamera } from "../render/OrbitCamera.js";
 import { WebGpuRenderer } from "../render/WebGpuRenderer.js";
+import {
+  createDefaultEvidenceResolver,
+} from "../evidence/DefaultEvidenceRegistry.js";
 
 const ASTRONOMICAL_BODIES = [NAIF.SUN, NAIF.EARTH, NAIF.MOON] as const;
 type FrameSelection = number | "system";
@@ -50,6 +53,8 @@ export class App {
   private readonly canvas = element<HTMLCanvasElement>("#universe");
   private readonly renderer = new WebGpuRenderer(this.canvas);
   private readonly camera = new OrbitCamera(this.canvas);
+  private readonly evidenceResolver =
+    createDefaultEvidenceResolver();
   private provider: JplKernelProvider | null = null;
   private states: readonly CelestialState[] = [];
   private frameSelection: FrameSelection = NAIF.EARTH;
@@ -295,15 +300,52 @@ export class App {
     } catch {
       return;
     }
+
+    const kernel = this.leapSecondKernel;
+    if (!kernel) return;
+
+    // BMNG is monthly, so this remains the current coarse invalidation key.
+    // M6 will move cache/refresh policy into the generic streaming scheduler.
     const key = String(monthIndex + 1).padStart(2, "0");
     if (key === this.surfaceEpochKey) return;
 
     this.surfaceEpochKey = key;
-    this.surfaceStatus.textContent = "loading authoritative reference surface maps…";
-    void this.renderer.prepareSurfaceEpoch(isoUtc)
-      .then((summary) => {
+    this.surfaceStatus.textContent =
+      "resolving best available surface evidence…";
+
+    const epoch = Object.freeze({
+      utcIso: isoUtc,
+      timeline: "TAI_UNIX",
+      timelineSeconds:
+        utcIsoToTaiUnixSeconds(kernel, isoUtc),
+    });
+
+    void this.evidenceResolver.resolveBest({
+      payloadKind: "raster-tile",
+      bodyId: NAIF.EARTH,
+      epoch,
+      requiredReferenceFrame: "ITRF93",
+      acceptableEvidenceKinds: ["reconstruction"],
+    })
+      .then(async (resolution) => {
         if (this.surfaceEpochKey !== key) return;
-        this.surfaceStatus.textContent = summary || "uniform physical materials";
+
+        const evidence = resolution.evidence;
+        if (!evidence) {
+          const reasons = resolution.unavailableProviders
+            .map((entry) => `${entry.providerId}: ${entry.reason}`)
+            .join(" | ");
+          this.surfaceStatus.textContent =
+            reasons
+              ? `uniform physical material · ${reasons}`
+              : "uniform physical material · no compatible surface evidence";
+          return;
+        }
+
+        const summary =
+          await this.renderer.prepareSurfaceEvidence(evidence);
+        if (this.surfaceEpochKey !== key) return;
+        this.surfaceStatus.textContent = summary;
         this.render();
       })
       .catch((error) => {
