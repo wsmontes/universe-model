@@ -67,6 +67,13 @@
 - explicit surface-evidence clearing when no compatible evidence exists;
 - hierarchical parent fallback that keeps complete coverage while children stream;
 - integrity-gated persistent binary Cache Storage with serialized quota eviction.
+- pck00011-derived Earth geodetic coordinate service in ITRF93;
+- explicit vertical-datum transform registry, including batch conversion for elevation grids;
+- generic TerrainTile grid contract with no-data semantics;
+- float64 body-fixed terrain mesh generation that omits unknown samples;
+- tile-local float32 terrain representation around a float64 body-fixed origin;
+- camera-relative terrain origin placement through authoritative body orientation;
+- generic WebGPU terrain position/normal/index buffer upload resource.
 
 ## Temporal model
 

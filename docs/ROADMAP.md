@@ -100,13 +100,16 @@
 
 ## M7 — Earth geodesy and global terrain
 
-- [ ] geodetic coordinate service from ITRF93 ellipsoid
-- [ ] explicit vertical-datum model/conversion boundary
-- [ ] generic TerrainTile payload
-- [ ] Copernicus DEM GLO-30 provider
-- [ ] GEBCO bathymetry provider
-- [ ] terrain mesh generation / GPU upload
-- [ ] camera-relative precision validation near ground
+- [x] geodetic coordinate service from the pinned pck00011 Earth ellipsoid in ITRF93
+- [x] explicit vertical-datum model/conversion boundary with batch transforms
+- [x] generic TerrainTile payload with normalized grid orientation and no-data semantics
+- [ ] Copernicus DEM GLO-30 provider / COG decoder
+- [ ] GEBCO_2026 bathymetry provider
+- [x] datum-safe float64 body-fixed terrain mesh generation
+- [x] tile-local float32 GPU vertex representation around a float64 origin
+- [x] generic WebGPU terrain buffer upload primitive
+- [ ] visible terrain render pass
+- [x] camera-relative near-ground precision validation
 
 ## M8 — Vertical proof: Space → Earth → Himalaya → Everest
 

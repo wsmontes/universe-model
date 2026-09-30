@@ -351,3 +351,26 @@ Hierarchical tile fallback uses an all-coverage replacement rule: a ready parent
 The cache stores byte size and insertion time metadata, serializes mutations, and evicts oldest stored entries until the declared byte quota can admit a new entry. A single entry larger than the quota fails explicitly. Cache hits feed the same streaming telemetry used by network requests.
 
 The eviction clock uses browser wall time only for storage housekeeping; it has no relationship to simulation time or scientific epoch semantics.
+
+## Earth geodesy and terrain geometry
+
+Earth terrain geometry is built on the same physical ellipsoid already used by the body renderer: the pinned `pck00011.tpc BODY399_RADII` values, interpreted in ITRF93. The geodesy layer does not silently replace these radii with another Earth ellipsoid merely because a source raster names WGS84.
+
+The current Earth oblate ellipsoid is:
+
+```text
+semi-major: 6,378,136.6 m
+semi-minor: 6,356,751.9 m
+body-fixed frame: ITRF93
+source: NASA/JPL NAIF pck00011.tpc BODY399_RADII
+```
+
+`geodeticToBodyFixed` and `bodyFixedToGeodetic` keep this transformation in float64. A separate vertical-datum registry owns height conversion. Terrain mesh generation accepts a source datum and an explicitly identified ellipsoidal target datum; if no transform exists, geometry creation fails rather than treating orthometric/geoid heights as ellipsoidal heights.
+
+`TerrainTile` normalizes all provider rasters to one grid convention: row-major, north to south, west to east. Non-finite values and declared no-data sentinels are invalid samples. Mesh generation omits triangles that depend on missing samples; it never interpolates unknown heights merely to close a hole.
+
+The scientific terrain mesh stores body-fixed positions and normals in float64. For GPU use, `TerrainLocalMesh` chooses a float64 body-fixed origin for each tile and stores only local offsets as float32. Per-frame placement transforms that origin through the authoritative body-fixed orientation, adds the astronomical body position, and subtracts the camera before narrowing the remaining values for rendering. This preserves local terrain precision while retaining the existing camera-relative large-world model.
+
+A representative Himalayan test patch currently shows a maximum float32 local-position reconstruction error of roughly 5.3e-5 m. This is a numerical representation result, not a claim about DEM measurement accuracy.
+
+`TerrainGpuResource` uploads localized position, body-fixed normal and index buffers. The visible terrain render pass and mixed-LOD edge stitching are still separate work.
