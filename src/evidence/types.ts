@@ -51,6 +51,45 @@ export interface TemporalExtent {
   readonly end?: EvidenceInstant;
 }
 
+export interface BodyLocation {
+  readonly kind: "body";
+  readonly bodyId: number;
+}
+
+export interface GeodeticLocation {
+  readonly kind: "geodetic";
+  readonly bodyId: number;
+  readonly latitudeDegrees: number;
+  readonly longitudeDegrees: number;
+  readonly heightMeters?: number;
+  readonly referenceFrame: string;
+  readonly verticalDatum?: string;
+}
+
+export type SpatialLocation =
+  | BodyLocation
+  | GeodeticLocation;
+
+export interface GlobalBodyExtent {
+  readonly kind: "global-body";
+  readonly bodyId: number;
+}
+
+export interface GeodeticBoundsExtent {
+  readonly kind: "geodetic-bounds";
+  readonly bodyId: number;
+  readonly southLatitudeDegrees: number;
+  readonly northLatitudeDegrees: number;
+  readonly westLongitudeDegrees: number;
+  readonly eastLongitudeDegrees: number;
+  readonly referenceFrame: string;
+  readonly verticalDatum?: string;
+}
+
+export type SpatialExtent =
+  | GlobalBodyExtent
+  | GeodeticBoundsExtent;
+
 export interface Resolution {
   readonly spatialMeters?: number;
   readonly angularArcSeconds?: number;
@@ -89,7 +128,7 @@ export interface EvidencePayload {
 
 export interface Evidence {
   readonly source: SourceIdentity;
-  readonly spatialExtent?: unknown;
+  readonly spatialExtent?: SpatialExtent;
   readonly temporalExtent?: TemporalExtent;
   readonly observationEpoch?: EvidenceInstant;
   readonly resolution: Resolution;
@@ -107,7 +146,7 @@ export interface EvidenceQuery {
   readonly payloadKind: EvidencePayloadKind;
   readonly bodyId?: number;
   readonly epoch?: EvidenceInstant;
-  readonly location?: unknown;
+  readonly location?: SpatialLocation;
   readonly requiredReferenceFrame?: string;
   readonly requiredVerticalDatum?: string;
   readonly acceptableEvidenceKinds?: readonly EvidenceKind[];

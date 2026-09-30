@@ -180,11 +180,15 @@ export class EarthBmngEvidenceProvider
       }),
       spatialExtent:
         Object.freeze({
+          kind: "geodetic-bounds" as const,
           bodyId: 399,
-          latitudeDegrees:
-            asset.validLatitudeDegrees,
-          longitudeDegrees:
-            [-180, 180] as const,
+          southLatitudeDegrees:
+            asset.validLatitudeDegrees[0],
+          northLatitudeDegrees:
+            asset.validLatitudeDegrees[1],
+          westLongitudeDegrees: -180,
+          eastLongitudeDegrees: 180,
+          referenceFrame: "ITRF93",
         }),
       temporalExtent:
         Object.freeze({

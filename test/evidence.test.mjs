@@ -4,8 +4,12 @@ import {
   EvidenceRegistry,
 } from "../.test-dist/src/evidence/EvidenceProvider.js";
 import {
+  EvidenceIntegrityError,
   EvidenceResolver,
 } from "../.test-dist/src/evidence/EvidenceResolver.js";
+import {
+  spatialContainment,
+} from "../.test-dist/src/evidence/SpatialCoverage.js";
 
 function evidence(
   sourceId,
@@ -344,6 +348,245 @@ test(
     assert.equal(
       evidence.temporalExtent?.end?.utcIso,
       "2005-01-01T00:00:00Z",
+    );
+  },
+);
+
+
+test(
+  "typed geodetic bounds distinguish Everest from Victoria",
+  () => {
+    const himalaya = {
+      kind: "geodetic-bounds",
+      bodyId: 399,
+      southLatitudeDegrees: 26,
+      northLatitudeDegrees: 36,
+      westLongitudeDegrees: 75,
+      eastLongitudeDegrees: 96,
+      referenceFrame: "ITRF93",
+    };
+
+    const everest = {
+      kind: "geodetic",
+      bodyId: 399,
+      latitudeDegrees: 27.9881,
+      longitudeDegrees: 86.925,
+      referenceFrame: "ITRF93",
+    };
+
+    const victoria = {
+      kind: "geodetic",
+      bodyId: 399,
+      latitudeDegrees: 48.4284,
+      longitudeDegrees: -123.3656,
+      referenceFrame: "ITRF93",
+    };
+
+    assert.equal(
+      spatialContainment(himalaya, everest),
+      "contains",
+    );
+    assert.equal(
+      spatialContainment(himalaya, victoria),
+      "outside",
+    );
+  },
+);
+
+test(
+  "geodetic bounds support antimeridian-crossing footprints",
+  () => {
+    const crossing = {
+      kind: "geodetic-bounds",
+      bodyId: 399,
+      southLatitudeDegrees: -20,
+      northLatitudeDegrees: 20,
+      westLongitudeDegrees: 170,
+      eastLongitudeDegrees: -170,
+      referenceFrame: "ITRF93",
+    };
+
+    assert.equal(
+      spatialContainment(crossing, {
+        kind: "geodetic",
+        bodyId: 399,
+        latitudeDegrees: 0,
+        longitudeDegrees: 179,
+        referenceFrame: "ITRF93",
+      }),
+      "contains",
+    );
+    assert.equal(
+      spatialContainment(crossing, {
+        kind: "geodetic",
+        bodyId: 399,
+        latitudeDegrees: 0,
+        longitudeDegrees: 0,
+        referenceFrame: "ITRF93",
+      }),
+      "outside",
+    );
+  },
+);
+
+test(
+  "operational provider failures do not hide valid evidence",
+  async () => {
+    const registry =
+      new EvidenceRegistry();
+
+    registry.register({
+      id: "offline-provider",
+      payloadKinds: ["terrain-tile"],
+      coverage() {
+        throw new Error(
+          "network unavailable",
+        );
+      },
+      resolve() {
+        throw new Error(
+          "should not resolve",
+        );
+      },
+    });
+
+    registry.register(
+      provider(
+        "copernicus",
+        true,
+        evidence(
+          "copernicus",
+          30,
+        ),
+      ),
+    );
+
+    const result =
+      await new EvidenceResolver(
+        registry,
+      ).resolveBest({
+        payloadKind:
+          "terrain-tile",
+      });
+
+    assert.equal(
+      result.evidence?.source.id,
+      "copernicus",
+    );
+    assert.deepEqual(
+      result.unavailableProviders,
+      [
+        {
+          providerId:
+            "offline-provider",
+          reason:
+            "coverage failed: network unavailable",
+        },
+      ],
+    );
+  },
+);
+
+test(
+  "provider integrity violations fail resolution instead of silently falling back",
+  async () => {
+    const registry =
+      new EvidenceRegistry();
+
+    registry.register(
+      provider(
+        "valid-provider",
+        true,
+        evidence(
+          "valid-provider",
+          30,
+        ),
+      ),
+    );
+    registry.register(
+      provider(
+        "wrong-frame",
+        true,
+        evidence(
+          "wrong-frame",
+          5,
+          {
+            referenceFrame:
+              "MOON_PA_DE440",
+          },
+        ),
+      ),
+    );
+
+    await assert.rejects(
+      () =>
+        new EvidenceResolver(
+          registry,
+        ).resolveBest({
+          payloadKind:
+            "terrain-tile",
+          requiredReferenceFrame:
+            "ITRF93",
+        }),
+      (error) =>
+        error instanceof
+          EvidenceIntegrityError &&
+        error.providerId ===
+          "wrong-frame",
+    );
+  },
+);
+
+test(
+  "resolver rejects provider evidence outside its declared footprint",
+  async () => {
+    const registry =
+      new EvidenceRegistry();
+
+    registry.register(
+      provider(
+        "regional-dem",
+        true,
+        evidence(
+          "regional-dem",
+          8,
+          {
+            spatialExtent: {
+              kind:
+                "geodetic-bounds",
+              bodyId: 399,
+              southLatitudeDegrees: 26,
+              northLatitudeDegrees: 36,
+              westLongitudeDegrees: 75,
+              eastLongitudeDegrees: 96,
+              referenceFrame:
+                "ITRF93",
+            },
+          },
+        ),
+      ),
+    );
+
+    await assert.rejects(
+      () =>
+        new EvidenceResolver(
+          registry,
+        ).resolveBest({
+          payloadKind:
+            "terrain-tile",
+          bodyId: 399,
+          location: {
+            kind: "geodetic",
+            bodyId: 399,
+            latitudeDegrees:
+              48.4284,
+            longitudeDegrees:
+              -123.3656,
+            referenceFrame:
+              "ITRF93",
+          },
+        }),
+      /outside its declared spatial extent/,
     );
   },
 );
