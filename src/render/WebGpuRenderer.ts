@@ -562,6 +562,37 @@ export class WebGpuRenderer {
     );
   }
 
+  clearSurfaceEvidence(
+    bodyId: number,
+  ): void {
+    const requested =
+      this.requestedSurfaceAssetIds.get(
+        bodyId,
+      );
+    if (requested) {
+      this.surfaceLoadHandles
+        .get(requested)
+        ?.cancel(
+          "surface evidence became unavailable",
+        );
+      this.requestedSurfaceAssetIds.delete(
+        bodyId,
+      );
+    }
+
+    const current =
+      this.surfaceTextures.get(bodyId);
+    if (current) {
+      current.texture.destroy();
+      this.surfaceTextures.delete(
+        bodyId,
+      );
+    }
+    this.surfaceBindGroups.delete(
+      bodyId,
+    );
+  }
+
   get streamingTelemetrySummary(): string {
     const snapshot =
       this.requestScheduler.telemetry.snapshot();

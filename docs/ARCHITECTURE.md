@@ -333,3 +333,21 @@ The streaming layer also provides:
 - a byte-budgeted LRU cache with resource pinning so active frame resources are never evicted merely to admit a new tile.
 
 Persistent browser-cache quota management and hierarchical terrain seam handling remain separate work; these are not claimed as solved by the current tranche.
+
+## Evidence stream identity and hierarchical fallback
+
+Source-specific invalidation is not owned by the application UI. `EvidenceStreamController` resolves the current query, derives the generic evidence cache identity, and only reapplies evidence when that identity changes. Repeated epochs that resolve to the same evidence are therefore no-ops at the renderer boundary. This removes the former BMNG calendar-month key from `App`.
+
+The controller also tracks generations explicitly. If an older load finishes after a newer evidence choice, it is reported as superseded rather than becoming active. Returning to an earlier identity (A -> B -> A) creates a new logical generation even when a physical request can still be deduplicated below it.
+
+When no compatible evidence exists, the stream calls an explicit clear operation. For surface color this cancels the pending raster consumer, removes the old texture, and returns rendering to the uniform physical material. Old evidence is never kept merely because it was already resident on the GPU.
+
+Hierarchical tile fallback uses an all-coverage replacement rule: a ready parent remains selected while any requested child branch lacks complete renderable coverage. Only when every required child branch can cover its region is the parent replaced. This prevents streaming holes during refinement. Terrain-specific crack treatment at mixed LOD boundaries (edge stitching or skirts) remains deferred until the terrain mesh exists.
+
+## Persistent binary evidence cache
+
+`PersistentBinaryCache` provides a bounded Cache Storage layer for binary scientific assets and tile chunks. It accepts only cache identities marked `persistentSafe`, which currently requires evidence to be both integrity-verified and immutably identified. Unverified BMNG runtime JPEGs therefore do not enter this persistent scientific cache.
+
+The cache stores byte size and insertion time metadata, serializes mutations, and evicts oldest stored entries until the declared byte quota can admit a new entry. A single entry larger than the quota fails explicitly. Cache hits feed the same streaming telemetry used by network requests.
+
+The eviction clock uses browser wall time only for storage housekeeping; it has no relationship to simulation time or scientific epoch semantics.

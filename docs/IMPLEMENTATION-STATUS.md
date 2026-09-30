@@ -63,6 +63,10 @@
 - BMNG raster loading routed through the scheduler with superseded-request cancellation;
 - previous valid surface retained until replacement evidence has loaded successfully;
 - streaming telemetry counters for requests, bytes, deduplication, cancellation and cache hits.
+- generic evidence-stream identity controller replacing BMNG-specific month invalidation in App;
+- explicit surface-evidence clearing when no compatible evidence exists;
+- hierarchical parent fallback that keeps complete coverage while children stream;
+- integrity-gated persistent binary Cache Storage with serialized quota eviction.
 
 ## Temporal model
 
