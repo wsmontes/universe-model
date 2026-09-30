@@ -24,6 +24,16 @@ import {
   BudgetedLruCache,
   ResourceBudgetExceededError,
 } from "../.test-dist/src/streaming/BudgetedLruCache.js";
+import {
+  EvidenceStreamController,
+} from "../.test-dist/src/streaming/EvidenceStreamController.js";
+import {
+  selectTileCoverage,
+} from "../.test-dist/src/streaming/TileFallbackSelector.js";
+import {
+  PersistentBinaryCache,
+  PersistentCacheBudgetError,
+} from "../.test-dist/src/streaming/PersistentBinaryCache.js";
 
 function deferred() {
   let resolve;
@@ -477,5 +487,564 @@ test("budgeted LRU never evicts pinned resources to admit new data", () => {
   assert.equal(
     cache.has("incoming"),
     false,
+  );
+});
+
+
+test("evidence stream avoids source-specific refresh keys and only reapplies changed evidence", async () => {
+  let current =
+    cacheEvidence();
+  let applyCount = 0;
+  let clearCount = 0;
+
+  const resolver = {
+    async resolveBest() {
+      return {
+        evidence: current,
+        consideredProviders: [
+          "test",
+        ],
+        unavailableProviders: [],
+      };
+    },
+  };
+
+  const controller =
+    new EvidenceStreamController(
+      resolver,
+      {
+        async apply(evidence) {
+          applyCount += 1;
+          return evidence.source.id;
+        },
+        clear() {
+          clearCount += 1;
+        },
+      },
+    );
+
+  const first =
+    await controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+  const same =
+    await controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+
+  assert.equal(
+    first.status,
+    "applied",
+  );
+  assert.equal(
+    same.status,
+    "unchanged",
+  );
+  assert.equal(applyCount, 1);
+
+  current = cacheEvidence({
+    source: {
+      id: "source-2",
+      name: "Source 2",
+      authority: "official",
+      product: "Product",
+      version: "v2",
+    },
+    integrity: {
+      verified: true,
+      digest: "def456",
+    },
+  });
+
+  const changed =
+    await controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+
+  assert.equal(
+    changed.status,
+    "applied",
+  );
+  assert.equal(applyCount, 2);
+
+  resolver.resolveBest =
+    async () => ({
+      evidence: null,
+      consideredProviders: [
+        "test",
+      ],
+      unavailableProviders: [
+        {
+          providerId: "test",
+          reason: "outside coverage",
+        },
+      ],
+    });
+
+  const unavailable =
+    await controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+
+  assert.equal(
+    unavailable.status,
+    "unavailable",
+  );
+  assert.equal(clearCount, 1);
+  assert.deepEqual(
+    unavailable.diagnostics,
+    [
+      "test: outside coverage",
+    ],
+  );
+});
+
+test("evidence stream marks an older in-flight application superseded", async () => {
+  const firstGate = deferred();
+  let current =
+    cacheEvidence();
+
+  const resolver = {
+    async resolveBest() {
+      return {
+        evidence: current,
+        consideredProviders: [],
+        unavailableProviders: [],
+      };
+    },
+  };
+
+  const controller =
+    new EvidenceStreamController(
+      resolver,
+      {
+        async apply(evidence) {
+          if (
+            evidence.source.id ===
+            "source"
+          ) {
+            await firstGate.promise;
+          }
+          return evidence.source.id;
+        },
+        clear() {},
+      },
+    );
+
+  const first =
+    controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+
+  await Promise.resolve();
+
+  current = cacheEvidence({
+    source: {
+      id: "new-source",
+      name: "New Source",
+      authority: "official",
+      product: "Product",
+      version: "v2",
+    },
+    integrity: {
+      verified: true,
+      digest: "new-digest",
+    },
+  });
+
+  const second =
+    await controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+  assert.equal(
+    second.status,
+    "applied",
+  );
+
+  firstGate.resolve();
+  assert.equal(
+    (await first).status,
+    "superseded",
+  );
+});
+
+test("tile hierarchy retains ready parent until child coverage is complete", () => {
+  const root = {
+    id: "root",
+    state: "ready",
+    children: [
+      {
+        id: "a",
+        state: "ready",
+      },
+      {
+        id: "b",
+        state: "loading",
+      },
+      {
+        id: "c",
+        state: "ready",
+      },
+      {
+        id: "d",
+        state: "ready",
+      },
+    ],
+  };
+
+  const partial =
+    selectTileCoverage(
+      root,
+      () => true,
+    );
+  assert.equal(
+    partial.complete,
+    true,
+  );
+  assert.deepEqual(
+    partial.tiles.map(
+      (tile) => tile.id,
+    ),
+    ["root"],
+  );
+
+  const completeRoot = {
+    ...root,
+    children:
+      root.children.map(
+        (child) => ({
+          ...child,
+          state: "ready",
+        }),
+      ),
+  };
+
+  const complete =
+    selectTileCoverage(
+      completeRoot,
+      () => true,
+    );
+  assert.deepEqual(
+    complete.tiles.map(
+      (tile) => tile.id,
+    ),
+    ["a", "b", "c", "d"],
+  );
+});
+
+class MemoryCache {
+  constructor() {
+    this.entries = new Map();
+  }
+
+  async match(request) {
+    const response =
+      this.entries.get(
+        request.url,
+      );
+    return response?.clone();
+  }
+
+  async put(request, response) {
+    this.entries.set(
+      request.url,
+      response.clone(),
+    );
+  }
+
+  async delete(request) {
+    return this.entries.delete(
+      request.url,
+    );
+  }
+
+  async keys() {
+    return [...this.entries.keys()]
+      .map(
+        (url) =>
+          new Request(url),
+      );
+  }
+}
+
+class MemoryCacheStorage {
+  constructor() {
+    this.named =
+      new Map();
+  }
+
+  async open(name) {
+    let cache =
+      this.named.get(name);
+    if (!cache) {
+      cache =
+        new MemoryCache();
+      this.named.set(
+        name,
+        cache,
+      );
+    }
+    return cache;
+  }
+
+  async delete(name) {
+    return this.named.delete(name);
+  }
+}
+
+test("persistent binary cache enforces immutable evidence and byte quota", async () => {
+  const originalCaches =
+    globalThis.caches;
+  const originalNow =
+    Date.now;
+  const storage =
+    new MemoryCacheStorage();
+  globalThis.caches =
+    storage;
+
+  let clock = 1;
+  Date.now = () =>
+    clock++;
+
+  try {
+    const telemetry =
+      new StreamingTelemetry();
+    const cache =
+      new PersistentBinaryCache({
+        cacheName:
+          "test-cache",
+        maxBytes: 6,
+        telemetry,
+      });
+
+    const firstIdentity =
+      evidenceCacheIdentity(
+        cacheEvidence({
+          source: {
+            id: "first",
+            name: "First",
+            authority:
+              "official",
+          },
+          integrity: {
+            verified: true,
+            digest: "first",
+          },
+        }),
+      );
+    const secondIdentity =
+      evidenceCacheIdentity(
+        cacheEvidence({
+          source: {
+            id: "second",
+            name: "Second",
+            authority:
+              "official",
+          },
+          integrity: {
+            verified: true,
+            digest: "second",
+          },
+        }),
+      );
+
+    assert.equal(
+      await cache.put(
+        firstIdentity,
+        new Uint8Array(
+          [1, 2, 3, 4],
+        ).buffer,
+      ),
+      true,
+    );
+
+    assert.equal(
+      await cache.put(
+        secondIdentity,
+        new Uint8Array(
+          [5, 6, 7, 8],
+        ).buffer,
+      ),
+      true,
+    );
+
+    assert.equal(
+      await cache.get(
+        firstIdentity,
+      ),
+      null,
+    );
+
+    const second =
+      await cache.get(
+        secondIdentity,
+      );
+    assert.equal(
+      second?.byteLength,
+      4,
+    );
+    assert.equal(
+      telemetry.snapshot()
+        .cacheHits,
+      1,
+    );
+
+    const unsafe =
+      evidenceCacheIdentity(
+        cacheEvidence({
+          integrity: {
+            verified: false,
+            immutableId:
+              "unverified",
+          },
+        }),
+      );
+
+    assert.equal(
+      await cache.put(
+        unsafe,
+        new Uint8Array([1])
+          .buffer,
+      ),
+      false,
+    );
+
+    await assert.rejects(
+      () =>
+        cache.put(
+          secondIdentity,
+          new Uint8Array(7)
+            .buffer,
+        ),
+      PersistentCacheBudgetError,
+    );
+  } finally {
+    if (
+      originalCaches ===
+      undefined
+    ) {
+      delete globalThis.caches;
+    } else {
+      globalThis.caches =
+        originalCaches;
+    }
+    Date.now =
+      originalNow;
+  }
+});
+
+
+test("evidence stream handles A-B-A while the first A is still in flight", async () => {
+  const firstGate =
+    deferred();
+  let current =
+    cacheEvidence({
+      source: {
+        id: "A",
+        name: "A",
+        authority: "official",
+        product: "Product",
+      },
+      integrity: {
+        verified: true,
+        digest: "A",
+      },
+    });
+
+  const resolver = {
+    async resolveBest() {
+      return {
+        evidence: current,
+        consideredProviders: [],
+        unavailableProviders: [],
+      };
+    },
+  };
+
+  let firstA = true;
+  const controller =
+    new EvidenceStreamController(
+      resolver,
+      {
+        async apply(evidence) {
+          if (
+            evidence.source.id ===
+              "A" &&
+            firstA
+          ) {
+            firstA = false;
+            await firstGate.promise;
+          }
+          return evidence.source.id;
+        },
+        clear() {},
+      },
+    );
+
+  const originalA =
+    controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+
+  await Promise.resolve();
+
+  current = cacheEvidence({
+    source: {
+      id: "B",
+      name: "B",
+      authority: "official",
+      product: "Product",
+    },
+    integrity: {
+      verified: true,
+      digest: "B",
+    },
+  });
+
+  assert.equal(
+    (
+      await controller.prepare({
+        payloadKind:
+          "terrain-tile",
+      })
+    ).status,
+    "applied",
+  );
+
+  current = cacheEvidence({
+    source: {
+      id: "A",
+      name: "A",
+      authority: "official",
+      product: "Product",
+    },
+    integrity: {
+      verified: true,
+      digest: "A",
+    },
+  });
+
+  const returnedA =
+    controller.prepare({
+      payloadKind:
+        "terrain-tile",
+    });
+
+  firstGate.resolve();
+
+  assert.equal(
+    (await originalA).status,
+    "superseded",
+  );
+  assert.equal(
+    (await returnedA).status,
+    "applied",
   );
 });

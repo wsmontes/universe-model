@@ -87,14 +87,15 @@
 
 - [x] request scheduler with priority, deduplication and consumer-aware cancellation
 - [x] screen-space error / target-resolution policy
-- [ ] parent-tile fallback and seam-safe LOD transitions
+- [x] hierarchical parent-tile fallback until child coverage is complete
+- [ ] terrain edge stitching / skirts for mixed-LOD geometric seams
 - [x] byte-budgeted pinned LRU primitive for memory/GPU resources
-- [ ] persistent-cache quota / eviction policy
+- [x] integrity-gated persistent-cache quota / eviction policy
 - [x] strict HTTP Range substrate
 - [x] generic cache identity from evidence integrity/version metadata
 - [x] current BMNG surface loading routed through the scheduler
 - [x] retain previous valid surface until replacement evidence is ready
-- [ ] move surface refresh/invalidation policy out of App
+- [x] move surface refresh/invalidation policy out of App via generic evidence stream identity
 - [x] request / transferred-byte / dedup / cancellation / cache-hit telemetry substrate
 
 ## M7 — Earth geodesy and global terrain

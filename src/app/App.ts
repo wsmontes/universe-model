@@ -14,7 +14,6 @@ import {
 } from "../astronomy/time/LeapSecondKernel.js";
 import {
   taiUnixSecondsToUtcIso,
-  utcCalendarMonthIndex,
   utcIsoToTaiUnixSeconds,
 } from "../astronomy/time/UtcTimeline.js";
 import { OrbitCamera } from "../render/OrbitCamera.js";
@@ -22,6 +21,9 @@ import { WebGpuRenderer } from "../render/WebGpuRenderer.js";
 import {
   createDefaultEvidenceResolver,
 } from "../evidence/DefaultEvidenceRegistry.js";
+import {
+  EvidenceStreamController,
+} from "../streaming/EvidenceStreamController.js";
 
 const ASTRONOMICAL_BODIES = [NAIF.SUN, NAIF.EARTH, NAIF.MOON] as const;
 type FrameSelection = number | "system";
@@ -55,6 +57,20 @@ export class App {
   private readonly camera = new OrbitCamera(this.canvas);
   private readonly evidenceResolver =
     createDefaultEvidenceResolver();
+  private readonly surfaceEvidenceStream =
+    new EvidenceStreamController(
+      this.evidenceResolver,
+      {
+        apply: (evidence) =>
+          this.renderer.prepareSurfaceEvidence(
+            evidence,
+          ),
+        clear: () =>
+          this.renderer.clearSurfaceEvidence(
+            NAIF.EARTH,
+          ),
+      },
+    );
   private provider: JplKernelProvider | null = null;
   private states: readonly CelestialState[] = [];
   private frameSelection: FrameSelection = NAIF.EARTH;
@@ -68,7 +84,6 @@ export class App {
   private animationHandle: number | null = null;
   private lastEphemerisRequestRealMs = 0;
   private tickInFlight = false;
-  private surfaceEpochKey = "";
 
   private readonly epochInput = element<HTMLInputElement>("#epoch-input");
   private readonly gpuStatus = element<HTMLElement>("#gpu-status");
@@ -294,63 +309,75 @@ export class App {
   }
 
   private prepareSurfacesForEpoch(isoUtc: string): void {
-    let monthIndex: number;
-    try {
-      monthIndex = utcCalendarMonthIndex(isoUtc);
-    } catch {
-      return;
-    }
-
-    const kernel = this.leapSecondKernel;
+    const kernel =
+      this.leapSecondKernel;
     if (!kernel) return;
 
-    // BMNG is monthly, so this remains the current coarse invalidation key.
-    // M6 will move cache/refresh policy into the generic streaming scheduler.
-    const key = String(monthIndex + 1).padStart(2, "0");
-    if (key === this.surfaceEpochKey) return;
-
-    this.surfaceEpochKey = key;
-    this.surfaceStatus.textContent =
-      "resolving best available surface evidence…";
+    if (
+      !this.surfaceEvidenceStream
+        .activeCacheKey
+    ) {
+      this.surfaceStatus.textContent =
+        "resolving best available surface evidence…";
+    }
 
     const epoch = Object.freeze({
       utcIso: isoUtc,
       timeline: "TAI_UNIX",
       timelineSeconds:
-        utcIsoToTaiUnixSeconds(kernel, isoUtc),
+        utcIsoToTaiUnixSeconds(
+          kernel,
+          isoUtc,
+        ),
     });
 
-    void this.evidenceResolver.resolveBest({
+    void this.surfaceEvidenceStream.prepare({
       payloadKind: "raster-tile",
       bodyId: NAIF.EARTH,
       epoch,
-      requiredReferenceFrame: "ITRF93",
-      acceptableEvidenceKinds: ["reconstruction"],
+      requiredReferenceFrame:
+        "ITRF93",
+      acceptableEvidenceKinds: [
+        "reconstruction",
+      ],
     })
-      .then(async (resolution) => {
-        if (this.surfaceEpochKey !== key) return;
+      .then((result) => {
+        if (
+          result.status ===
+          "superseded"
+        ) {
+          return;
+        }
 
-        const evidence = resolution.evidence;
-        if (!evidence) {
-          const reasons = resolution.unavailableProviders
-            .map((entry) => `${entry.providerId}: ${entry.reason}`)
-            .join(" | ");
+        if (
+          result.status ===
+          "unavailable"
+        ) {
+          const reasons =
+            result.diagnostics.join(
+              " | ",
+            );
           this.surfaceStatus.textContent =
             reasons
               ? `uniform physical material · ${reasons}`
               : "uniform physical material · no compatible surface evidence";
+          this.render();
           return;
         }
 
-        const summary =
-          await this.renderer.prepareSurfaceEvidence(evidence);
-        if (this.surfaceEpochKey !== key) return;
-        this.surfaceStatus.textContent =
-          `${summary} · ${this.renderer.streamingTelemetrySummary}`;
-        this.render();
+        if (result.value) {
+          this.surfaceStatus.textContent =
+            `${result.value} · ${this.renderer.streamingTelemetrySummary}`;
+        }
+
+        if (
+          result.status ===
+          "applied"
+        ) {
+          this.render();
+        }
       })
       .catch((error) => {
-        if (this.surfaceEpochKey !== key) return;
         this.surfaceStatus.textContent =
           `uniform fallback · ${this.errorMessage(error)}`;
       });
