@@ -12,7 +12,7 @@ import {
 } from "../.test-dist/src/astronomy/time/UtcTimeline.js";
 import { circleVisibleFraction } from "../.test-dist/src/render/eclipse.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "../.test-dist/src/render/AtmosphereModel.js";
-import { earthBmngAssetForUtc } from "../.test-dist/src/render/SurfaceTextureManifest.js";
+import { EarthBmngEvidenceProvider } from "../.test-dist/src/evidence/providers/EarthBmngEvidenceProvider.js";
 import {
   DEFAULT_DISPLAY_REFERENCE_RADIANCE_W_M2_SR,
   HDR_RADIANCE_W_M2_SR_PER_STORAGE_UNIT,
@@ -119,8 +119,14 @@ test("literal UTC leap-second labels map to a continuous physical timeline", asy
   );
 });
 
-test("Earth surface selection keeps the civil month during a leap second", () => {
-  const december = earthBmngAssetForUtc("2016-12-31T23:59:60.5Z");
+test("Earth surface evidence keeps the civil month during a leap second", () => {
+  const evidence = new EarthBmngEvidenceProvider().resolve({
+    payloadKind: "raster-tile",
+    bodyId: 399,
+    epoch: { utcIso: "2016-12-31T23:59:60.5Z" },
+  });
+  assert.ok(evidence);
+  const december = evidence.payload.data;
   assert.equal(december.id, "earth-bmng-base-2004-12");
   assert.equal(december.dataEpoch, "2004-12");
 });
@@ -286,8 +292,14 @@ test("Earth reference atmosphere preserves physical 100 km shell geometry", () =
 });
 
 
-test("Earth surface manifest preserves dated BMNG provenance", () => {
-  const september = earthBmngAssetForUtc("2026-09-28T00:00:00Z");
+test("Earth surface evidence preserves dated BMNG payload metadata", () => {
+  const evidence = new EarthBmngEvidenceProvider().resolve({
+    payloadKind: "raster-tile",
+    bodyId: 399,
+    epoch: { utcIso: "2026-09-28T00:00:00Z" },
+  });
+  assert.ok(evidence);
+  const september = evidence.payload.data;
   assert.equal(september.id, "earth-bmng-base-2004-09");
   assert.equal(september.dataEpoch, "2004-09");
   assert.match(september.url, /\/september\/world\.200409\.3x5400x2700\.jpg$/);

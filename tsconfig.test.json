@@ -19,10 +19,11 @@
     "src/astronomy/spk/**/*.ts",
     "src/astronomy/pck/**/*.ts",
     "src/astronomy/frames/**/*.ts",
+    "src/astronomy/observation/**/*.ts",
+    "src/evidence/**/*.ts",
     "src/data/md5.ts",
     "src/render/eclipse.ts",
     "src/render/AtmosphereModel.ts",
-    "src/render/SurfaceTextureManifest.ts",
     "src/render/Radiometry.ts"
   ]
 }

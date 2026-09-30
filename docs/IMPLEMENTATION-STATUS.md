@@ -44,6 +44,15 @@
 - ephemeris Web Worker;
 - runtime provenance display;
 - physical camera framing without changing world geometry.
+- observer-corrected reception-state reconstruction with LT/CN one-way light time;
+- Newtonian stellar aberration (+S) using observer SSB velocity;
+- causal target orientation evaluated at the emission epoch for observed states;
+- generic multiscale Evidence / EvidenceQuery metadata model;
+- EvidenceProvider registry and deterministic EvidenceResolver;
+- hard reference-frame and vertical-datum evidence compatibility gates;
+- leap-safe temporal evidence ordering through caller-supplied continuous timeline coordinates;
+- NASA BMNG 2004 represented as the first concrete evidence provider;
+- current Earth reference-surface selection routed through the evidence resolver before rendering.
 
 ## Temporal model
 
@@ -77,7 +86,9 @@ The current test suite covers:
 3. leap-second step, literal `:60` parsing, UTC <-> continuous TAI timeline, and UTC -> ET sanity checks;
 4. finite-disk overlap cases for umbra, penumbra and no eclipse;
 5. a complete synthetic DAF/SPK Type 2 binary, including velocity reconstruction;
-6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction.
+6. a synthetic binary-PCK Type 2 RA/DEC/W record, including conversion to SPICE 3-1-3 angles, angular rates, and orthonormal matrix reconstruction;
+7. synthetic one-way light-time convergence and Newtonian stellar-aberration direction;
+8. multiscale evidence selection, regional fallback, hard frame rejection, leap-safe temporal ordering, and the BMNG evidence adapter.
 
 The separate `npm run validate:real-kernel` gate uses the actual DE442s kernel and live JPL Horizons vectors. It is intentionally not part of `npm test`: the ordinary test suite stays deterministic and offline, while the scientific cross-check is an explicit networked validation step.
 
@@ -98,7 +109,7 @@ The following are deliberately not presented as solved:
 - time-varying TSI/SSI tied to solar activity;
 - spectral solar radiance and spectral sensor response;
 - calibrated camera/sensor response beyond the explicit reference-radiance display transform;
-- light-time/aberration observed mode;
+- full observed-scene rendering with causally consistent retarded illumination;
 - Gaia star catalogue;
 - empirical comparison against a real DE442s kernel in this repository's automated test environment.
 

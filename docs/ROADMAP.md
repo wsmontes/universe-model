@@ -63,13 +63,104 @@
 - [ ] ocean BRDF/Fresnel model
 - [x] explicit deterministic display reference-radiance transform
 - [ ] calibrated spectral exposure/instrument model
-- [ ] observer-corrected light-time mode
-- [ ] aberration model
+- [x] observer-corrected one-way light-time engine (LT/CN)
+- [x] Newtonian stellar aberration (+S)
+- [x] observed-state provider/worker API with causal target orientation
+- [ ] full observed-scene rendering with causally consistent retarded illumination
 
-## M5 — Stellar space
+## M5 — Multiscale Evidence Core
 
-- [ ] Gaia catalogue pipeline
+- [x] generic Evidence / EvidenceQuery metadata contract
+- [x] EvidenceProvider coverage + resolve contract
+- [x] EvidenceRegistry
+- [x] deterministic EvidenceResolver
+- [x] hard reference-frame and vertical-datum compatibility gates
+- [x] explicit spatial / temporal / uncertainty / authority selection criteria
+- [x] leap-safe caller-supplied temporal comparison coordinate
+- [x] first concrete provider: NASA BMNG 2004
+- [x] route current Earth reference surface selection through the resolver
+- [x] renderer consumes selected evidence rather than choosing source
+- [ ] structured spatial extent/location types replacing provider-defined unknown payloads
+- [ ] provider failure isolation / diagnostics without masking integrity violations
+
+## M6 — Streaming, cache and generic LOD
+
+- [ ] request scheduler with cancellation and priority
+- [ ] screen-space error / target-resolution policy
+- [ ] parent-tile fallback and seam-safe LOD transitions
+- [ ] memory + GPU + persistent-cache budgets
+- [ ] HTTP Range substrate
+- [ ] generic cache identity from evidence integrity/version metadata
+- [ ] move surface refresh/invalidation policy out of App
+- [ ] request/bytes/cache-hit telemetry
+
+## M7 — Earth geodesy and global terrain
+
+- [ ] geodetic coordinate service from ITRF93 ellipsoid
+- [ ] explicit vertical-datum model/conversion boundary
+- [ ] generic TerrainTile payload
+- [ ] Copernicus DEM GLO-30 provider
+- [ ] GEBCO bathymetry provider
+- [ ] terrain mesh generation / GPU upload
+- [ ] camera-relative precision validation near ground
+
+## M8 — Vertical proof: Space → Earth → Himalaya → Everest
+
+- [ ] continuous navigation from astronomical scale to terrain scale
+- [ ] global Copernicus terrain
+- [ ] regional NASA High Mountain Asia DEM override
+- [ ] automatic evidence fallback outside high-resolution footprint
+- [ ] provenance visible for active terrain evidence
+- [ ] no geometric discontinuity at provider/LOD boundaries
+
+## M9 — Temporal Earth observations
+
+- [ ] STAC discovery abstraction
+- [ ] COG range-reading path
+- [ ] Sentinel-2 provider
+- [ ] Landsat provider
+- [ ] NASA GIBS near-real-time layers
+- [ ] Black Marble night-radiance layer
+- [ ] temporal evidence selection tied to requested epoch
+
+## M10 — Vertical proof: Moon → surface
+
+- [ ] LOLA global terrain provider
+- [ ] LROC WAC Hapke-normalized surface provider
+- [ ] regional high-resolution lunar evidence
+- [ ] continuous orbital-to-surface navigation
+- [ ] preserve MOON_PA_DE440 orientation throughout LOD changes
+
+## M11 — Vertical proof: Earth → city → building
+
+- [ ] PMTiles / MVT reader
+- [ ] Overture buildings provider
+- [ ] OSM complementary provider
+- [ ] explicit unknown-height building representation
+- [ ] regional imagery override
+- [ ] public LiDAR / point-cloud adapter
+- [ ] first measured urban geometry vertical
+
+## M12 — Stellar space
+
+- [ ] Gaia catalogue ingestion and HEALPix sharding
 - [ ] proper-motion propagation
 - [ ] radial-velocity propagation where available
 - [ ] point-spread-function rendering
 - [ ] catalogue LOD/culling
+- [ ] HiPS survey adapter
+- [ ] VizieR/TAP catalogue adapter
+
+## M13 — Dynamic atmosphere / living Earth
+
+- [ ] GFS / ECMWF model provider boundary
+- [ ] pressure-level 3D atmospheric fields
+- [ ] cloud/aerosol evidence layers
+- [ ] separate measured/assimilated weather from reference atmosphere model
+
+## M14 — Broader Solar System
+
+- [ ] JPL SBDB small-body integration
+- [ ] planetary PDS / USGS provider family
+- [ ] MOLA / CTX / HiRISE Mars hierarchy
+- [ ] additional moons/planets through the same evidence + LOD architecture

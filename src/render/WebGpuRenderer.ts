@@ -6,10 +6,11 @@ import type { CameraState } from "./OrbitCamera.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "./AtmosphereModel.js";
 import { bodyModel } from "./BodyModels.js";
 import { SurfaceTextureLoader, type LoadedSurfaceTexture } from "./SurfaceTextureLoader.js";
+import type { Evidence } from "../evidence/types.js";
 import {
-  surfaceAssetForBody,
-  type SurfaceTextureAsset,
-} from "./SurfaceTextureManifest.js";
+  isSurfaceRasterAsset,
+  type SurfaceRasterAsset,
+} from "../evidence/SurfaceRasterAsset.js";
 import { cameraRotation, multiplyMat4, reversedInfinitePerspective } from "./math.js";
 import { createUnitSphereMesh } from "./sphereMesh.js";
 import {
@@ -529,31 +530,27 @@ export class WebGpuRenderer {
     this.resize();
   }
 
-  async prepareSurfaceEpoch(isoUtc: string): Promise<string> {
-    const assets = [
-      surfaceAssetForBody(399, isoUtc),
-      surfaceAssetForBody(301, isoUtc),
-    ].filter((asset): asset is SurfaceTextureAsset => asset !== null);
+  async prepareSurfaceEvidence(
+    evidence: Evidence,
+  ): Promise<string> {
+    if (evidence.payload.kind !== "raster-tile") {
+      throw new Error(
+        `Surface renderer requires raster-tile evidence, received ${evidence.payload.kind}.`,
+      );
+    }
 
-    const results = await Promise.allSettled(
-      assets.map((asset) => this.ensureSurfaceTexture(asset)),
+    const asset = evidence.payload.data;
+    if (!isSurfaceRasterAsset(asset)) {
+      throw new Error(
+        `Evidence ${evidence.source.id} does not contain a valid surface texture asset.`,
+      );
+    }
+
+    const loaded = await this.ensureSurfaceTexture(asset);
+    return (
+      `${evidence.source.name} · ${asset.displayName} · ` +
+      `${loaded.width}×${loaded.height}`
     );
-
-    const summaries: string[] = [];
-    results.forEach((result, index) => {
-      const asset = assets[index];
-      if (!asset) return;
-      if (result.status === "fulfilled") {
-        summaries.push(
-          `${asset.displayName} · ${result.value.width}×${result.value.height}`,
-        );
-      } else {
-        summaries.push(
-          `${asset.displayName}: uniform fallback (${this.errorMessage(result.reason)})`,
-        );
-      }
-    });
-    return summaries.join(" | ");
   }
 
   render(
@@ -1029,7 +1026,7 @@ export class WebGpuRenderer {
   }
 
   private async ensureSurfaceTexture(
-    asset: SurfaceTextureAsset,
+    asset: SurfaceRasterAsset,
   ): Promise<LoadedSurfaceTexture> {
     this.requestedSurfaceAssetIds.set(asset.bodyId, asset.id);
 

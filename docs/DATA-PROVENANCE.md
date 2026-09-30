@@ -173,3 +173,20 @@ NASA notes that TSI is not literally constant: solar activity changes it by roug
 The physical Sun radius comes from the project's pinned `pck00011.tpc` body radii. That radius plus the exact au and the reference TSI define the initial uniform solar-disk radiance.
 
 This milestone is broadband. Spectral solar irradiance, limb darkening, wavelength-dependent surface BRDF, and a calibrated sensor spectral response remain separate future layers.
+
+## Evidence-provider representation
+
+The multiscale evidence layer now has its first concrete provider: `EarthBmngEvidenceProvider`.
+
+It wraps the existing NASA Earth Observatory Blue Marble: Next Generation monthly Base Map selection as evidence metadata rather than changing the underlying dataset. The provider declares:
+
+- body: Earth (NAIF 399);
+- payload: raster surface evidence;
+- reference frame: Earth-fixed ITRF93 for rendering placement;
+- evidence kind: processed reconstruction/composite;
+- source product: Blue Marble: Next Generation — Base Map;
+- dataset epoch: the selected month of 2004;
+- runtime remote asset integrity: **not checksum-verified** yet;
+- fallback behaviour: unavailable evidence returns control to the resolver/renderer rather than inventing a substitute.
+
+The current 5400×2700 JPEG runtime asset is not relabelled as the native scientific resolution of the source product. A scalar `spatialMeters` value is therefore intentionally omitted until the delivered representation has a formally documented resolution model.

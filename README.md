@@ -18,6 +18,8 @@ UTC input
 
 The application does not enlarge bodies, compress distances, add ambient light, or invent a star field. Earth is rendered in authoritative ITRF93 orientation and the Moon in the DE440 principal-axes frame when their pinned binary PCK data are available; accuracy-sensitive body-fixed rendering is withheld rather than replaced with an invented orientation.
 
+The current development milestone adds a **multiscale evidence layer** between scientific sources and rendering. Dataset adapters declare coverage, epoch, resolution, uncertainty, reference frame, datum, attribution and integrity; an EvidenceResolver chooses compatible evidence before the renderer sees it. The existing NASA Blue Marble 2004 surface is the first source routed through this boundary. The same architecture is intended to host terrain, imagery, LiDAR, Gaia/HiPS and other scientific datasets without source-specific logic spreading through the renderer.
+
 ## Run locally
 
 Requirements: Node.js 22+ and a browser with WebGPU.
