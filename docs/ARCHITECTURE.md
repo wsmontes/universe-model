@@ -300,3 +300,36 @@ The first structured spatial vocabulary deliberately stays small:
 This is sufficient for global-to-regional terrain overrides such as Copernicus DEM -> High Mountain Asia without introducing provider-specific opaque geometry into the resolver. Future celestial/catalogue extent forms can extend the tagged union without weakening the existing contract.
 
 Provider availability and provider integrity are intentionally different failure classes. A network/transport/provider execution failure is recorded as unavailable so another compatible source may satisfy the query. Once a provider returns evidence, however, incompatible payload kind, reference frame, datum, body or declared spatial footprint is an `EvidenceIntegrityError` and aborts resolution. A higher-quality-looking fallback must never hide contradictory scientific metadata.
+
+## Streaming scheduler and LOD substrate
+
+M6 introduces a dataset-agnostic browser streaming layer between evidence selection and decoders/renderers.
+
+The request scheduler enforces bounded concurrency, higher-priority-first queueing, request-key deduplication and consumer-aware cancellation. Multiple scene consumers may share one physical request; cancelling one consumer does not abort the transfer while another consumer still needs it. A physical transfer is aborted only when no consumers remain.
+
+Surface raster loading is the first real runtime path routed through this scheduler. When a new surface supersedes a pending request, the old request is cancelled. A currently valid loaded surface is retained until the replacement finishes successfully, so a source transition does not manufacture a blank intermediate state.
+
+The first generic LOD policy is based on projected physical error:
+
+```text
+meters_per_pixel =
+  2 * distance * tan(vertical_fov / 2)
+  / viewport_height_pixels
+
+screen_space_error_pixels =
+  geometric_error_meters
+  / meters_per_pixel
+```
+
+Refinement is requested only when the projected geometric error exceeds the configured pixel threshold. This keeps LOD tied to physical geometry and observer configuration rather than arbitrary altitude bands.
+
+Large-file access uses a strict HTTP Range substrate. A range request must return `206 Partial Content` with an exact matching `Content-Range`; a server that silently returns `200` is rejected rather than allowing an accidental full download of a PMTiles/COG/large scientific asset.
+
+The streaming layer also provides:
+
+- evidence-derived cache identities;
+- a `persistentSafe` classification only for evidence that is both verified and immutably identified;
+- request/byte/deduplication/cancellation/cache-hit telemetry;
+- a byte-budgeted LRU cache with resource pinning so active frame resources are never evicted merely to admit a new tile.
+
+Persistent browser-cache quota management and hierarchical terrain seam handling remain separate work; these are not claimed as solved by the current tranche.

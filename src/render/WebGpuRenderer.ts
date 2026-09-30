@@ -6,6 +6,10 @@ import type { CameraState } from "./OrbitCamera.js";
 import { EARTH_REFERENCE_ATMOSPHERE } from "./AtmosphereModel.js";
 import { bodyModel } from "./BodyModels.js";
 import { SurfaceTextureLoader, type LoadedSurfaceTexture } from "./SurfaceTextureLoader.js";
+import {
+  RequestScheduler,
+  type ScheduledRequestHandle,
+} from "../streaming/RequestScheduler.js";
 import type { Evidence } from "../evidence/types.js";
 import {
   isSurfaceRasterAsset,
@@ -467,12 +471,17 @@ export class WebGpuRenderer {
   private bodySceneBuffer: GPUBuffer | null = null;
   private bodySceneBindGroup: GPUBindGroup | null = null;
   private bodyResources = new Map<number, BodyGpuResource>();
+  private readonly requestScheduler =
+    new RequestScheduler({
+      maxConcurrency: 6,
+    });
   private surfaceTextureLoader: SurfaceTextureLoader | null = null;
   private surfaceSampler: GPUSampler | null = null;
   private fallbackSurfaceTexture: GPUTexture | null = null;
   private readonly surfaceTextures = new Map<number, LoadedSurfaceTexture>();
   private readonly surfaceBindGroups = new Map<number, GPUBindGroup>();
   private readonly surfaceLoadPromises = new Map<string, Promise<LoadedSurfaceTexture>>();
+  private readonly surfaceLoadHandles = new Map<string, ScheduledRequestHandle<LoadedSurfaceTexture>>();
   private readonly requestedSurfaceAssetIds = new Map<number, string>();
 
   private atmospherePipeline: GPURenderPipeline | null = null;
@@ -550,6 +559,22 @@ export class WebGpuRenderer {
     return (
       `${evidence.source.name} · ${asset.displayName} · ` +
       `${loaded.width}×${loaded.height}`
+    );
+  }
+
+  get streamingTelemetrySummary(): string {
+    const snapshot =
+      this.requestScheduler.telemetry.snapshot();
+    const mebibytes =
+      snapshot.transferredBytes /
+      1_048_576;
+
+    return (
+      `stream ${snapshot.physicalRequests} req · ` +
+      `${mebibytes.toFixed(1)} MiB · ` +
+      `${snapshot.deduplicatedConsumers} dedup · ` +
+      `${snapshot.cancelledRequests} cancelled · ` +
+      `${snapshot.cacheHits} cache hits`
     );
   }
 
@@ -804,6 +829,7 @@ export class WebGpuRenderer {
 
   dispose(): void {
     window.removeEventListener("resize", this.resize);
+    this.requestScheduler.dispose();
     this.depthTexture?.destroy();
     this.hdrTexture?.destroy();
     this.atmosphereScatteringTexture?.destroy();
@@ -1002,7 +1028,11 @@ export class WebGpuRenderer {
 
   private initializeSurfaceResources(): void {
     const device = this.requireDevice();
-    this.surfaceTextureLoader = new SurfaceTextureLoader(device);
+    this.surfaceTextureLoader =
+      new SurfaceTextureLoader(
+        device,
+        this.requestScheduler,
+      );
     this.surfaceSampler = device.createSampler({
       label: "surface-equirectangular-sampler",
       addressModeU: "repeat",
@@ -1028,40 +1058,109 @@ export class WebGpuRenderer {
   private async ensureSurfaceTexture(
     asset: SurfaceRasterAsset,
   ): Promise<LoadedSurfaceTexture> {
-    this.requestedSurfaceAssetIds.set(asset.bodyId, asset.id);
-
-    const current = this.surfaceTextures.get(asset.bodyId);
-    if (current?.asset.id === asset.id) return current;
-
-    if (current) {
-      current.texture.destroy();
-      this.surfaceTextures.delete(asset.bodyId);
-      this.surfaceBindGroups.delete(asset.bodyId);
+    const current =
+      this.surfaceTextures.get(
+        asset.bodyId,
+      );
+    if (
+      current?.asset.id === asset.id
+    ) {
+      return current;
     }
 
-    const existingPromise = this.surfaceLoadPromises.get(asset.id);
-    if (existingPromise) return existingPromise;
+    const loader =
+      this.surfaceTextureLoader;
+    if (!loader) {
+      throw new Error(
+        "Surface texture loader is not initialized.",
+      );
+    }
 
-    const loader = this.surfaceTextureLoader;
-    if (!loader) throw new Error("Surface texture loader is not initialized.");
+    const previousRequested =
+      this.requestedSurfaceAssetIds.get(
+        asset.bodyId,
+      );
+    if (
+      previousRequested &&
+      previousRequested !== asset.id
+    ) {
+      this.surfaceLoadHandles
+        .get(previousRequested)
+        ?.cancel(
+          `${asset.displayName} superseded the previous surface evidence request`,
+        );
+    }
 
-    const promise = loader.load(asset)
+    this.requestedSurfaceAssetIds.set(
+      asset.bodyId,
+      asset.id,
+    );
+
+    const existingPromise =
+      this.surfaceLoadPromises.get(
+        asset.id,
+      );
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    // Keep the currently valid texture bound until the replacement
+    // is fully loaded. A failed/superseded request therefore never
+    // creates a temporary fabricated/blank surface state.
+    const handle = loader.load(asset);
+    this.surfaceLoadHandles.set(
+      asset.id,
+      handle,
+    );
+
+    const promise = handle.promise
       .then((loaded) => {
-        if (this.requestedSurfaceAssetIds.get(asset.bodyId) !== asset.id) {
+        if (
+          this.requestedSurfaceAssetIds.get(
+            asset.bodyId,
+          ) !== asset.id
+        ) {
           loaded.texture.destroy();
           throw new Error(
             `${asset.displayName} was superseded by a newer surface request.`,
           );
         }
-        this.surfaceTextures.set(asset.bodyId, loaded);
-        this.surfaceBindGroups.delete(asset.bodyId);
+
+        const previous =
+          this.surfaceTextures.get(
+            asset.bodyId,
+          );
+        this.surfaceTextures.set(
+          asset.bodyId,
+          loaded,
+        );
+        this.surfaceBindGroups.delete(
+          asset.bodyId,
+        );
+
+        if (
+          previous &&
+          previous.asset.id !==
+            loaded.asset.id
+        ) {
+          previous.texture.destroy();
+        }
+
         return loaded;
       })
       .finally(() => {
-        this.surfaceLoadPromises.delete(asset.id);
+        this.surfaceLoadPromises.delete(
+          asset.id,
+        );
+        this.surfaceLoadHandles.delete(
+          asset.id,
+        );
       });
 
-    this.surfaceLoadPromises.set(asset.id, promise);
+    this.surfaceLoadPromises.set(
+      asset.id,
+      promise,
+    );
     return promise;
   }
 

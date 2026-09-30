@@ -21,6 +21,7 @@
     "src/astronomy/frames/**/*.ts",
     "src/astronomy/observation/**/*.ts",
     "src/evidence/**/*.ts",
+    "src/streaming/**/*.ts",
     "src/data/md5.ts",
     "src/render/eclipse.ts",
     "src/render/AtmosphereModel.ts",
