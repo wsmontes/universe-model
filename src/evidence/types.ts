@@ -6,6 +6,7 @@ export type EvidenceKind =
   | "catalog";
 
 export type EvidencePayloadKind =
+  | "terrain-source"
   | "terrain-tile"
   | "raster-tile"
   | "vector-tile"
