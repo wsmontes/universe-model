@@ -288,3 +288,15 @@ The resolver applies hard compatibility constraints before quality selection. Re
 Temporal distance is deliberately timeline-agnostic. `EvidenceInstant` may carry both the literal UTC label and a caller-supplied monotonic `timelineSeconds` coordinate (for example the project's TAI-based Unix-second axis). The evidence core never normalizes leap-second labels through JavaScript `Date`.
 
 NASA Blue Marble: Next Generation is the first concrete adapter. It is represented as a dated 2004 processed reconstruction with an unverified remote runtime asset, rather than being hard-coded as "the Earth texture".
+
+### Spatial coverage and provider failure semantics
+
+The first structured spatial vocabulary deliberately stays small:
+
+- `global-body` identifies evidence that covers an entire celestial body;
+- `geodetic-bounds` identifies a body-fixed latitude/longitude footprint, including antimeridian-crossing bounds;
+- `body` and `geodetic` query locations provide the corresponding lookup positions.
+
+This is sufficient for global-to-regional terrain overrides such as Copernicus DEM -> High Mountain Asia without introducing provider-specific opaque geometry into the resolver. Future celestial/catalogue extent forms can extend the tagged union without weakening the existing contract.
+
+Provider availability and provider integrity are intentionally different failure classes. A network/transport/provider execution failure is recorded as unavailable so another compatible source may satisfy the query. Once a provider returns evidence, however, incompatible payload kind, reference frame, datum, body or declared spatial footprint is an `EvidenceIntegrityError` and aborts resolution. A higher-quality-looking fallback must never hide contradictory scientific metadata.

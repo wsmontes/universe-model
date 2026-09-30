@@ -53,6 +53,8 @@
 - leap-safe temporal evidence ordering through caller-supplied continuous timeline coordinates;
 - NASA BMNG 2004 represented as the first concrete evidence provider;
 - current Earth reference-surface selection routed through the evidence resolver before rendering.
+- typed global-body and geodetic-bounds spatial evidence coverage with antimeridian support;
+- provider operational-failure isolation while incompatible returned evidence remains a hard integrity error.
 
 ## Temporal model
 

@@ -80,8 +80,8 @@
 - [x] first concrete provider: NASA BMNG 2004
 - [x] route current Earth reference surface selection through the resolver
 - [x] renderer consumes selected evidence rather than choosing source
-- [ ] structured spatial extent/location types replacing provider-defined unknown payloads
-- [ ] provider failure isolation / diagnostics without masking integrity violations
+- [x] structured body/geodetic spatial extent and location types
+- [x] provider failure isolation / diagnostics without masking integrity violations
 
 ## M6 — Streaming, cache and generic LOD
 

@@ -1,4 +1,7 @@
 import { EvidenceRegistry } from "./EvidenceProvider.js";
+import {
+  spatialContainment,
+} from "./SpatialCoverage.js";
 import type {
   Evidence,
   EvidenceInstant,
@@ -25,6 +28,31 @@ const AUTHORITY_RANK: Readonly<
   community: 3,
   unknown: 4,
 });
+
+export class EvidenceIntegrityError
+  extends Error
+{
+  readonly providerId: string;
+
+  constructor(
+    providerId: string,
+    message: string,
+  ) {
+    super(
+      `Evidence integrity violation from ${providerId}: ${message}`,
+    );
+    this.name = "EvidenceIntegrityError";
+    this.providerId = providerId;
+  }
+}
+
+function errorMessage(
+  error: unknown,
+): string {
+  return error instanceof Error
+    ? error.message
+    : String(error);
+}
 
 function comparableSeconds(
   instant: EvidenceInstant | undefined,
@@ -164,6 +192,16 @@ function compareEvidence(
   );
 }
 
+function integrityFailure(
+  evidence: Evidence,
+  message: string,
+): never {
+  throw new EvidenceIntegrityError(
+    evidence.source.id,
+    message,
+  );
+}
+
 function validateEvidence(
   evidence: Evidence,
   query: EvidenceQuery,
@@ -172,8 +210,9 @@ function validateEvidence(
     evidence.payload.kind !==
     query.payloadKind
   ) {
-    throw new Error(
-      `Evidence provider ${evidence.source.id} returned ${evidence.payload.kind} for ${query.payloadKind} query.`,
+    integrityFailure(
+      evidence,
+      `returned ${evidence.payload.kind} for ${query.payloadKind} query.`,
     );
   }
 
@@ -183,8 +222,9 @@ function validateEvidence(
     evidence.referenceFrame !==
       query.requiredReferenceFrame
   ) {
-    throw new Error(
-      `Evidence provider ${evidence.source.id} returned reference frame ${evidence.referenceFrame}; expected ${query.requiredReferenceFrame}.`,
+    integrityFailure(
+      evidence,
+      `returned reference frame ${evidence.referenceFrame}; expected ${query.requiredReferenceFrame}.`,
     );
   }
 
@@ -194,8 +234,9 @@ function validateEvidence(
     evidence.verticalDatum !==
       query.requiredVerticalDatum
   ) {
-    throw new Error(
-      `Evidence provider ${evidence.source.id} returned vertical datum ${evidence.verticalDatum ?? "unknown"}; expected ${query.requiredVerticalDatum}.`,
+    integrityFailure(
+      evidence,
+      `returned vertical datum ${evidence.verticalDatum ?? "unknown"}; expected ${query.requiredVerticalDatum}.`,
     );
   }
 
@@ -206,9 +247,47 @@ function validateEvidence(
       evidence.kind,
     )
   ) {
-    throw new Error(
-      `Evidence provider ${evidence.source.id} returned disallowed evidence kind ${evidence.kind}.`,
+    integrityFailure(
+      evidence,
+      `returned disallowed evidence kind ${evidence.kind}.`,
     );
+  }
+
+  if (
+    query.bodyId !== undefined &&
+    evidence.spatialExtent !== undefined &&
+    evidence.spatialExtent.bodyId !==
+      query.bodyId
+  ) {
+    integrityFailure(
+      evidence,
+      `returned spatial extent for body ${evidence.spatialExtent.bodyId}; expected body ${query.bodyId}.`,
+    );
+  }
+
+  if (
+    query.location !== undefined &&
+    evidence.spatialExtent !== undefined
+  ) {
+    let containment;
+    try {
+      containment = spatialContainment(
+        evidence.spatialExtent,
+        query.location,
+      );
+    } catch (error) {
+      integrityFailure(
+        evidence,
+        `returned invalid spatial metadata: ${errorMessage(error)}`,
+      );
+    }
+
+    if (containment === "outside") {
+      integrityFailure(
+        evidence,
+        "returned evidence outside its declared spatial extent for the requested location.",
+      );
+    }
   }
 }
 
@@ -221,6 +300,16 @@ export class EvidenceResolver {
   async resolveBest(
     query: EvidenceQuery,
   ): Promise<EvidenceResolution> {
+    if (
+      query.bodyId !== undefined &&
+      query.location !== undefined &&
+      query.location.bodyId !== query.bodyId
+    ) {
+      throw new Error(
+        `Evidence query body ${query.bodyId} conflicts with location body ${query.location.bodyId}.`,
+      );
+    }
+
     const providers =
       this.registry.matching(query);
     const consideredProviders =
@@ -235,8 +324,18 @@ export class EvidenceResolver {
 
     await Promise.all(
       providers.map(async (candidate) => {
-        const coverage =
-          await candidate.coverage(query);
+        let coverage;
+        try {
+          coverage =
+            await candidate.coverage(query);
+        } catch (error) {
+          unavailableProviders.push({
+            providerId: candidate.id,
+            reason:
+              `coverage failed: ${errorMessage(error)}`,
+          });
+          return;
+        }
 
         if (
           coverage.status ===
@@ -251,8 +350,18 @@ export class EvidenceResolver {
           return;
         }
 
-        const evidence =
-          await candidate.resolve(query);
+        let evidence;
+        try {
+          evidence =
+            await candidate.resolve(query);
+        } catch (error) {
+          unavailableProviders.push({
+            providerId: candidate.id,
+            reason:
+              `resolve failed: ${errorMessage(error)}`,
+          });
+          return;
+        }
 
         if (!evidence) {
           unavailableProviders.push({
@@ -263,6 +372,10 @@ export class EvidenceResolver {
           return;
         }
 
+        // Provider transport/availability failures are isolated above.
+        // A provider that returns incompatible or self-contradictory
+        // evidence is different: that is an integrity error and must
+        // fail the resolution rather than being silently bypassed.
         validateEvidence(
           evidence,
           query,
