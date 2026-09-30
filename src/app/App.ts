@@ -345,7 +345,8 @@ export class App {
         const summary =
           await this.renderer.prepareSurfaceEvidence(evidence);
         if (this.surfaceEpochKey !== key) return;
-        this.surfaceStatus.textContent = summary;
+        this.surfaceStatus.textContent =
+          `${summary} · ${this.renderer.streamingTelemetrySummary}`;
         this.render();
       })
       .catch((error) => {

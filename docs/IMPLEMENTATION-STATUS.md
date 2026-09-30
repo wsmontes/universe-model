@@ -55,6 +55,14 @@
 - current Earth reference-surface selection routed through the evidence resolver before rendering.
 - typed global-body and geodetic-bounds spatial evidence coverage with antimeridian support;
 - provider operational-failure isolation while incompatible returned evidence remains a hard integrity error.
+- bounded-concurrency streaming request scheduler with priority, deduplication and consumer-aware cancellation;
+- strict HTTP Range fetching that refuses silent full-resource fallback;
+- evidence-derived cache identities with persistent-safety classification;
+- screen-space-error LOD math derived from physical distance, FOV and viewport height;
+- byte-budgeted pinned LRU primitive for memory/GPU resource control;
+- BMNG raster loading routed through the scheduler with superseded-request cancellation;
+- previous valid surface retained until replacement evidence has loaded successfully;
+- streaming telemetry counters for requests, bytes, deduplication, cancellation and cache hits.
 
 ## Temporal model
 
